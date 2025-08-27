@@ -1,0 +1,220 @@
+'use client';
+
+import React, { useState, useRef, useEffect } from 'react';
+import { Subscription } from '@/types/subscription';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Edit, Trash2, Plus, Save, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface SubscriptionTableProps {
+  data: Subscription[];
+  onDataChange: (data: Subscription[]) => void;
+}
+
+export function SubscriptionTable({ data, onDataChange }: SubscriptionTableProps) {
+  const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const columns = [
+    { key: 'slNo', label: 'SL NO', width: '80px' },
+    { key: 'imei', label: 'IMEI', width: '150px' },
+    { key: 'device', label: 'DEVICE', width: '120px' },
+    { key: 'vendor', label: 'VENDOR', width: '120px' },
+    { key: 'vehicleNo', label: 'VEHICLE NO', width: '130px' },
+    { key: 'customer', label: 'CUSTOMER', width: '150px' },
+    { key: 'phoneNo', label: 'PHONE NO', width: '120px' },
+    { key: 'tagPlace', label: 'TAG PLACE', width: '120px' },
+    { key: 'recharge', label: 'RECHARGE', width: '100px' },
+    { key: 'installDate', label: 'INSTALL DATE', width: '120px' },
+  ];
+
+  useEffect(() => {
+    if (editingCell && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingCell]);
+
+  const handleCellClick = (rowIndex: number, colKey: string, currentValue: any) => {
+    setEditingCell({ row: rowIndex, col: colKey });
+    setEditValue(String(currentValue || ''));
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingCell) return;
+
+    const newData = [...data];
+    const { row, col } = editingCell;
+
+    // Type conversion based on column
+    let value: any = editValue;
+    if (col === 'recharge' || col === 'slNo') {
+      value = parseInt(editValue) || 0;
+    }
+
+    newData[row] = { ...newData[row], [col]: value };
+    onDataChange(newData);
+    setEditingCell(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCell(null);
+    setEditValue('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSaveEdit();
+    } else if (e.key === 'Escape') {
+      handleCancelEdit();
+    }
+  };
+
+  const addNewRow = () => {
+    const newRow: Subscription = {
+      id: Math.max(...data.map(d => d.id)) + 1,
+      slNo: data.length + 1,
+      imei: '',
+      device: 'TRANSIGHT',
+      vendor: '',
+      vehicleNo: '',
+      customer: '',
+      phoneNo: '',
+      tagPlace: '',
+      recharge: 0,
+      installDate: new Date().toLocaleDateString('en-GB'),
+      status: 'active'
+    };
+    onDataChange([...data, newRow]);
+  };
+
+  const deleteSelectedRows = () => {
+    const newData = data.filter((_, index) => !selectedRows.has(index));
+    onDataChange(newData);
+    setSelectedRows(new Set());
+  };
+
+  const toggleRowSelection = (index: number) => {
+    const newSelected = new Set(selectedRows);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedRows(newSelected);
+  };
+
+  return (
+    <div className="w-full space-y-4">
+      <div className="flex gap-3">
+        <Button onClick={addNewRow} size="sm">
+          <Plus className="w-4 h-4 mr-2" />
+          Add Row
+        </Button>
+        {selectedRows.size > 0 && (
+          <Button onClick={deleteSelectedRows} variant="destructive" size="sm">
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete Selected ({selectedRows.size})
+          </Button>
+        )}
+      </div>
+
+      <div className="rounded-md border">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="w-12 p-3 border-r">
+                  <Checkbox
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setSelectedRows(new Set(data.map((_, i) => i)));
+                      } else {
+                        setSelectedRows(new Set());
+                      }
+                    }}
+                    checked={selectedRows.size === data.length && data.length > 0}
+                  />
+                </th>
+                {columns.map((col) => (
+                  <th
+                    key={col.key}
+                    className="p-3 text-left text-sm font-medium text-muted-foreground border-r"
+                    style={{ minWidth: col.width }}
+                  >
+                    {col.label}
+                  </th>
+                ))}
+                <th className="p-3 text-left text-sm font-medium text-muted-foreground">
+                  ACTIONS
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((row, rowIndex) => (
+                <tr
+                  key={row.id}
+                  className={cn(
+                    "border-b hover:bg-muted/50 transition-colors",
+                    selectedRows.has(rowIndex) && "bg-muted"
+                  )}
+                >
+                  <td className="p-3 border-r">
+                    <Checkbox
+                      checked={selectedRows.has(rowIndex)}
+                      onCheckedChange={() => toggleRowSelection(rowIndex)}
+                    />
+                  </td>
+                  {columns.map((col) => (
+                    <td
+                      key={col.key}
+                      className="p-2 border-r cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => handleCellClick(rowIndex, col.key, row[col.key as keyof Subscription])}
+                    >
+                      {editingCell?.row === rowIndex && editingCell?.col === col.key ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            ref={inputRef}
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            className="h-8 text-sm"
+                          />
+                          <Button size="sm" variant="ghost" onClick={handleSaveEdit}>
+                            <Save className="w-3 h-3" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={handleCancelEdit}>
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="p-2 min-h-[36px] flex items-center text-sm">
+                          {String(row[col.key as keyof Subscription] || '')}
+                        </div>
+                      )}
+                    </td>
+                  ))}
+                  <td className="p-3">
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleCellClick(rowIndex, 'customer', row.customer)}
+                      >
+                        <Edit className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
