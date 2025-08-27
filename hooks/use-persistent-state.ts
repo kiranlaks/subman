@@ -209,7 +209,7 @@ export function usePersistentState<T>(
     // Update the settings manager based on category
     switch (category) {
       case 'table':
-        userSettingsManager.updateTableSettings(key, { columnWidths: { [key]: value } });
+        userSettingsManager.updateTableSettings(key, { columnWidths: { [key]: value as number } });
         break;
       case 'filter':
         userSettingsManager.updateFilterSettings(key, { activeFilters: value });

@@ -3,7 +3,7 @@
 
 export interface UserSettings {
   // Table settings
-  columnWidths: Record<string, number>;
+  columnWidths: Record<string, Record<string, number>>;
   visibleColumns: Record<string, string[]>;
   sortPreferences: Record<string, { sortBy: string; sortOrder: 'asc' | 'desc' }>;
   pageSize: Record<string, number>;
@@ -158,7 +158,7 @@ export class UserSettingsManager {
   }): void {
     if (updates.columnWidths) {
       this.settings.columnWidths[tableId] = {
-        ...this.settings.columnWidths[tableId],
+        ...(this.settings.columnWidths[tableId] || {}),
         ...updates.columnWidths
       };
     }

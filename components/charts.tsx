@@ -1,6 +1,6 @@
 
 'use client';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -34,28 +34,31 @@ export function Charts({ subscriptions }: ChartsProps) {
   ];
   // Generate dynamic data from subscriptions
   const chartData = useMemo(() => {
-    // Monthly data based on installation dates
-    const monthlyStats = subscriptions.reduce((acc, sub) => {
+    // Monthly data based on installation dates - ensure all 12 months are shown
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    // Initialize all months with 0 values
+    const monthlyStats = months.reduce((acc, month) => {
+      acc[month] = { month, subscriptions: 0, revenue: 0 };
+      return acc;
+    }, {} as Record<string, { month: string; subscriptions: number; revenue: number }>);
+
+    // Populate with actual data
+    subscriptions.forEach(sub => {
       try {
         const date = new Date(sub.installationDate);
         const monthKey = date.toLocaleDateString('en-US', { month: 'short' });
 
-        if (!acc[monthKey]) {
-          acc[monthKey] = { month: monthKey, subscriptions: 0, revenue: 0 };
+        if (monthlyStats[monthKey]) {
+          monthlyStats[monthKey].subscriptions += 1;
+          monthlyStats[monthKey].revenue += sub.recharge * 1000; // Assuming recharge is in thousands
         }
-
-        acc[monthKey].subscriptions += 1;
-        acc[monthKey].revenue += sub.recharge * 1000; // Assuming recharge is in thousands
       } catch (error) {
         // Handle invalid dates
       }
-      return acc;
-    }, {} as Record<string, { month: string; subscriptions: number; revenue: number }>);
-
-    const monthlyData = Object.values(monthlyStats).sort((a, b) => {
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return months.indexOf(a.month) - months.indexOf(b.month);
     });
+
+    const monthlyData = months.map(month => monthlyStats[month]);
 
     // Device distribution
     const deviceStats = subscriptions.reduce((acc, sub) => {
@@ -121,13 +124,20 @@ export function Charts({ subscriptions }: ChartsProps) {
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={chartData.monthlyData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="month" fontSize={12} />
-                <YAxis fontSize={12} />
+                <XAxis dataKey="month" fontSize={12} tick={{ fill: '#000000' }} />
+                <YAxis fontSize={12} tick={{ fill: '#000000' }} />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '6px'
+                    backgroundColor: 'white',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    color: '#000000',
+                    fontSize: '14px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  }}
+                  labelStyle={{
+                    color: '#000000',
+                    fontWeight: '500'
                   }}
                 />
                 <Bar dataKey="subscriptions" fill="#3b82f6" radius={[2, 2, 0, 0]} />
@@ -145,13 +155,20 @@ export function Charts({ subscriptions }: ChartsProps) {
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={chartData.tagPlaceData.slice(0, 6)}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="place" fontSize={10} />
-                <YAxis fontSize={12} />
+                <XAxis dataKey="place" fontSize={10} tick={{ fill: '#000000' }} />
+                <YAxis fontSize={12} tick={{ fill: '#000000' }} />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '6px'
+                    backgroundColor: 'white',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    color: '#000000',
+                    fontSize: '14px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  }}
+                  labelStyle={{
+                    color: '#000000',
+                    fontWeight: '500'
                   }}
                 />
                 <Bar dataKey="count" fill="#8b5cf6" radius={[2, 2, 0, 0]} />
@@ -177,13 +194,20 @@ export function Charts({ subscriptions }: ChartsProps) {
                 ).map(([buttons, count]) => ({ buttons: `${buttons}`, count }))
               }>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="buttons" fontSize={12} />
-                <YAxis fontSize={12} />
+                <XAxis dataKey="buttons" fontSize={12} tick={{ fill: '#000000' }} />
+                <YAxis fontSize={12} tick={{ fill: '#000000' }} />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '6px'
+                    backgroundColor: 'white',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    color: '#000000',
+                    fontSize: '14px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  }}
+                  labelStyle={{
+                    color: '#000000',
+                    fontWeight: '500'
                   }}
                   formatter={(value, name) => [`${value} subscriptions`, `${name} buttons`]}
                 />
@@ -228,7 +252,7 @@ export function Charts({ subscriptions }: ChartsProps) {
               const maxCount = Math.max(...chartData.vendorData.map(v => v.count));
               const percentage = (vendor.count / maxCount) * 100;
               return (
-                <div key={vendor.vendor} className="flex items-center justify-between p-3 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
+                <div key={vendor.vendor} className="flex items-center justify-between p-3 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors hover:text-black">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div
                       className="flex items-center justify-center w-7 h-7 rounded-full text-white text-xs font-medium flex-shrink-0"
@@ -236,7 +260,7 @@ export function Charts({ subscriptions }: ChartsProps) {
                     >
                       {index + 1}
                     </div>
-                    <span className="text-sm font-medium truncate" title={vendor.vendor}>
+                    <span className="text-sm font-medium truncate text-black" title={vendor.vendor}>
                       {vendor.vendor}
                     </span>
                   </div>
@@ -250,7 +274,7 @@ export function Charts({ subscriptions }: ChartsProps) {
                         }}
                       />
                     </div>
-                    <span className="text-sm font-medium text-muted-foreground w-8 text-right">
+                    <span className="text-sm font-medium text-black w-8 text-right">
                       {vendor.count}
                     </span>
                   </div>
@@ -295,18 +319,18 @@ export function Charts({ subscriptions }: ChartsProps) {
               const total = chartData.deviceData.reduce((sum, d) => sum + d.value, 0);
               const percentage = ((device.value / total) * 100).toFixed(1);
               return (
-                <div key={device.name} className="flex items-center justify-between p-4 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors">
+                <div key={device.name} className="flex items-center justify-between p-4 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors hover:text-black">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <div
                         className="w-4 h-4 rounded-full"
                         style={{ backgroundColor: device.color }}
                       />
-                      <span className="text-xs font-medium text-muted-foreground">
+                      <span className="text-xs font-medium text-black">
                         #{index + 1}
                       </span>
                     </div>
-                    <span className="text-sm font-medium truncate" title={device.name}>
+                    <span className="text-sm font-medium truncate text-black" title={device.name}>
                       {device.name}
                     </span>
                   </div>
@@ -321,8 +345,8 @@ export function Charts({ subscriptions }: ChartsProps) {
                       />
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-medium">{device.value}</div>
-                      <div className="text-xs text-muted-foreground">{percentage}%</div>
+                      <div className="text-sm font-medium text-black">{device.value}</div>
+                      <div className="text-xs text-black">{percentage}%</div>
                     </div>
                   </div>
                 </div>

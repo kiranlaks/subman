@@ -78,6 +78,7 @@ export function SubscriptionTable({ data, onDataChange }: SubscriptionTableProps
     const newRow: Subscription = {
       id: Math.max(...data.map(d => d.id)) + 1,
       slNo: data.length + 1,
+      date: new Date().toLocaleDateString('en-GB'),
       imei: '',
       device: 'TRANSIGHT',
       vendor: '',
@@ -85,8 +86,9 @@ export function SubscriptionTable({ data, onDataChange }: SubscriptionTableProps
       customer: '',
       phoneNo: '',
       tagPlace: '',
+      panicButtons: 0,
       recharge: 0,
-      installDate: new Date().toLocaleDateString('en-GB'),
+      installationDate: new Date().toLocaleDateString('en-GB'),
       status: 'active'
     };
     onDataChange([...data, newRow]);

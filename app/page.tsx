@@ -11,9 +11,10 @@ import { RenewedTable } from '@/components/renewed-table';
 import { ExpiredTable } from '@/components/expired-table';
 import { ExcelImport } from '@/components/excel-import';
 import { Sidebar } from '@/components/sidebar';
-import { SettingsPanel } from '@/components/settings-panel';
+
 import { WidgetManager } from '@/components/widget-manager';
 import { SettingsTest } from '@/components/settings-test';
+import { SettingsContent } from '@/components/settings/settings-content';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { sampleSubscriptions } from '@/data/sample-data';
 import { Subscription, DashboardStats } from '@/types/subscription';
@@ -287,10 +288,14 @@ export default function Home() {
             </Card>
           </div>
         );
+      case 'settings':
+        return <SettingsContent />;
       default:
         return null;
     }
   };
+
+  // Settings is now handled in the regular content flow
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -308,6 +313,7 @@ export default function Home() {
                 {activeView === 'renewed' && 'Renewed'}
                 {activeView === 'expired' && 'Expired'}
                 {activeView === 'import' && 'Import Data'}
+                {activeView === 'settings' && 'Settings'}
               </h1>
               <p className="text-muted-foreground">
                 {activeView === 'overview' && 'Monitor your vehicle tracking subscriptions'}
@@ -317,6 +323,7 @@ export default function Home() {
                 {activeView === 'renewed' && 'View all renewed subscriptions and their updated expiry dates'}
                 {activeView === 'expired' && 'Manage expired subscriptions with comprehensive export and renewal options'}
                 {activeView === 'import' && 'Import subscription data from Excel files'}
+                {activeView === 'settings' && 'Configure your account and system preferences'}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -330,10 +337,6 @@ export default function Home() {
                   }}
                 />
               )}
-              <SettingsPanel onSaveAsDefault={() => {
-                // This will be called when user clicks "Save as Default"
-                console.log('Settings saved as default for current view:', activeView);
-              }} />
             </div>
           </div>
 

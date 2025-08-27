@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { SettingsPanel } from '@/components/settings-panel';
+
 import {
   LayoutDashboard,
   BarChart3,
@@ -134,9 +134,20 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
 
           {/* Bottom Section */}
           <div className="mt-auto space-y-1">
-            <div className="w-full">
-              <SettingsPanel />
-            </div>
+            <Button
+              variant="ghost"
+              className={cn(
+                "w-full justify-start h-9 px-3 text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 font-normal",
+                activeView === 'settings' && "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm"
+              )}
+              onClick={() => {
+                onViewChange('settings');
+                setIsMobileOpen(false);
+              }}
+            >
+              <Settings className="h-4 w-4 mr-3" />
+              <span>Settings</span>
+            </Button>
             
             <Button
               variant="ghost"

@@ -1,4 +1,4 @@
-import { User, UserRole, Permission, UserSession } from '@/types/user';
+import { User, UserRole, Permission, UserSession, AuthSession } from '@/types/user';
 
 // Mock data for demonstration
 const mockPermissions: Permission[] = [
@@ -151,7 +151,7 @@ class AuthManager {
     return this.currentUser;
   }
 
-  login(username: string, password: string): Promise<UserSession> {
+  login(username: string, password: string): Promise<AuthSession> {
     return new Promise((resolve, reject) => {
       // Mock authentication
       const user = this.users.find(u => u.username === username);
@@ -159,7 +159,7 @@ class AuthManager {
         this.currentUser = user;
         this.saveCurrentUser();
         
-        const session: UserSession = {
+        const session: AuthSession = {
           user,
           token: 'mock-jwt-token',
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
