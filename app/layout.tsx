@@ -3,6 +3,7 @@ import { GeistSans } from 'geist/font/sans'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import { ToastContainer } from '@/components/ui/toast'
+import { SupabaseProvider } from '@/lib/providers/supabase-provider'
 
 export const metadata: Metadata = {
   title: 'Subscription Management',
@@ -17,15 +18,17 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={GeistSans.className}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-          <ToastContainer />
-        </ThemeProvider>
+        <SupabaseProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="light"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+            <ToastContainer />
+          </ThemeProvider>
+        </SupabaseProvider>
       </body>
     </html>
   )

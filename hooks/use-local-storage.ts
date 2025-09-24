@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 
-// Simple localStorage hook that works reliably
+// Simple localStorage hook that works reliably and prevents hydration errors
 export function useLocalStorage<T>(key: string, defaultValue: T): [T, (value: T) => void] {
-  // Initialize state with default value
+  // Initialize state with default value and track if we've loaded from localStorage
   const [storedValue, setStoredValue] = useState<T>(defaultValue);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -14,8 +15,10 @@ export function useLocalStorage<T>(key: string, defaultValue: T): [T, (value: T)
         setStoredValue(parsed);
         console.log(`Loaded ${key} from localStorage:`, parsed);
       }
+      setIsLoaded(true);
     } catch (error) {
       console.error(`Error loading ${key} from localStorage:`, error);
+      setIsLoaded(true);
     }
   }, [key]);
 
@@ -30,7 +33,8 @@ export function useLocalStorage<T>(key: string, defaultValue: T): [T, (value: T)
     }
   }, [key]);
 
-  return [storedValue, setValue];
+  // Return default value until localStorage is loaded to prevent hydration mismatch
+  return [isLoaded ? storedValue : defaultValue, setValue];
 }
 
 // Specific hooks for different settings

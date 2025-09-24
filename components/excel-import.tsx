@@ -7,12 +7,15 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Subscription } from '@/types/subscription';
 import { Upload, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react';
+import { ImportValidationDialog } from './import-validation-dialog';
+import { auditLogger } from '@/lib/audit-logger';
 
 interface ExcelImportProps {
-  onImport: (data: Subscription[]) => void;
+  onImport: (data: Subscription[], importType: 'replace' | 'merge') => void;
+  existingData: Subscription[];
 }
 
-export function ExcelImport({ onImport }: ExcelImportProps) {
+export function ExcelImport({ onImport, existingData }: ExcelImportProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [importStatus, setImportStatus] = useState<{
@@ -20,6 +23,15 @@ export function ExcelImport({ onImport }: ExcelImportProps) {
     message: string;
     count?: number;
   }>({ type: null, message: '' });
+  const [validationDialog, setValidationDialog] = useState<{
+    isOpen: boolean;
+    importData: Subscription[];
+    fileName: string;
+  }>({
+    isOpen: false,
+    importData: [],
+    fileName: ''
+  });
 
   const handleFileSelect = () => {
     fileInputRef.current?.click();
@@ -190,10 +202,16 @@ export function ExcelImport({ onImport }: ExcelImportProps) {
         return;
       }
 
-      onImport(validSubscriptions);
+      // Show validation dialog instead of directly importing
+      setValidationDialog({
+        isOpen: true,
+        importData: validSubscriptions,
+        fileName: file.name
+      });
+
       setImportStatus({
         type: 'success',
-        message: `Successfully imported ${validSubscriptions.length} records from ${jsonData.length} rows`,
+        message: `Processed ${validSubscriptions.length} records from ${jsonData.length} rows. Review changes before importing.`,
         count: validSubscriptions.length
       });
 
@@ -231,6 +249,54 @@ export function ExcelImport({ onImport }: ExcelImportProps) {
     }
 
     processExcelFile(file);
+  };
+
+  const handleValidationConfirm = (importData: Subscription[], importType: 'replace' | 'merge') => {
+    // Log the import action with detailed information
+    auditLogger.log(
+      'data.import',
+      'subscriptions',
+      validationDialog.fileName,
+      {
+        importType,
+        fileName: validationDialog.fileName,
+        recordCount: importData.length,
+        existingRecords: existingData.length,
+        newRecords: importType === 'replace' ? importData.length : 
+          importData.filter(imp => !existingData.some(ex => ex.imei === imp.imei)).length,
+        updatedRecords: importType === 'merge' ? 
+          importData.filter(imp => existingData.some(ex => ex.imei === imp.imei)).length : 0
+      },
+      true
+    );
+
+    onImport(importData, importType);
+    setValidationDialog({ isOpen: false, importData: [], fileName: '' });
+    
+    setImportStatus({
+      type: 'success',
+      message: `Successfully ${importType === 'replace' ? 'replaced all data with' : 'imported'} ${importData.length} records`,
+      count: importData.length
+    });
+  };
+
+  const handleValidationCancel = () => {
+    // Log the cancelled import
+    auditLogger.log(
+      'data.import',
+      'subscriptions',
+      validationDialog.fileName,
+      {
+        fileName: validationDialog.fileName,
+        recordCount: validationDialog.importData.length,
+        action: 'cancelled'
+      },
+      false,
+      'Import cancelled by user'
+    );
+
+    setValidationDialog({ isOpen: false, importData: [], fileName: '' });
+    setImportStatus({ type: null, message: '' });
   };
 
   const downloadTemplate = () => {
@@ -357,6 +423,15 @@ export function ExcelImport({ onImport }: ExcelImportProps) {
           </div>
         </div>
       </CardContent>
+
+      <ImportValidationDialog
+        isOpen={validationDialog.isOpen}
+        onClose={handleValidationCancel}
+        onConfirm={handleValidationConfirm}
+        existingData={existingData}
+        importData={validationDialog.importData}
+        fileName={validationDialog.fileName}
+      />
     </Card>
   );
 }

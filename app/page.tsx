@@ -13,35 +13,99 @@ import { ExcelImport } from '@/components/excel-import';
 import { Sidebar } from '@/components/sidebar';
 
 import { WidgetManager } from '@/components/widget-manager';
-import { SettingsTest } from '@/components/settings-test';
 import { SettingsContent } from '@/components/settings/settings-content';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { sampleSubscriptions } from '@/data/sample-data';
 import { Subscription, DashboardStats } from '@/types/subscription';
+import { auditLogger } from '@/lib/audit-logger';
+import { UndoRedoToolbar } from '@/components/ui/undo-redo-toolbar';
+import { useUndoRedo, useUndoRedoKeyboard } from '@/hooks/use-undo-redo';
 
 export default function Home() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>(sampleSubscriptions);
   const [activeView, setActiveView] = useState('overview');
+  const { addAction } = useUndoRedo();
+  
+  // Enable keyboard shortcuts
+  useUndoRedoKeyboard();
 
-  const handleExcelImport = (importedData: Subscription[]) => {
-    // Option 1: Replace all data
-    // setSubscriptions(importedData);
+  // Create a wrapper function for setSubscriptions that can be used in undo/redo
+  const updateSubscriptions = (newData: Subscription[]) => {
+    setSubscriptions(newData);
+  };
 
-    // Option 2: Append to existing data (avoiding duplicates by IMEI)
-    const existingImeis = new Set(subscriptions.map(s => s.imei));
-    const newSubscriptions = importedData.filter(s => !existingImeis.has(s.imei));
-    const updatedSubscriptions = [...subscriptions, ...newSubscriptions];
+  const handleExcelImport = (importedData: Subscription[], importType: 'replace' | 'merge') => {
+    const previousData = JSON.parse(JSON.stringify(subscriptions)); // Deep copy
+    let finalSubscriptions: Subscription[];
 
-    // Update serial numbers
-    const reindexedSubscriptions = updatedSubscriptions.map((sub, index) => ({
-      ...sub,
-      slNo: index + 1
-    }));
+    if (importType === 'replace') {
+      // Replace all existing data
+      finalSubscriptions = importedData.map((sub, index) => ({
+        ...sub,
+        slNo: index + 1
+      }));
+    } else {
+      // Merge with existing data
+      const existingImeis = new Map(subscriptions.map(s => [s.imei, s]));
+      const mergedSubscriptions: Subscription[] = [];
+      
+      // Add/update from imported data
+      importedData.forEach(importedSub => {
+        const existing = existingImeis.get(importedSub.imei);
+        if (existing) {
+          // Update existing record
+          mergedSubscriptions.push({
+            ...existing,
+            ...importedSub,
+            id: existing.id, // Preserve original ID
+          });
+          existingImeis.delete(importedSub.imei); // Mark as processed
+        } else {
+          // Add new record
+          mergedSubscriptions.push(importedSub);
+        }
+      });
+      
+      // Add remaining existing records that weren't in import
+      existingImeis.forEach(existingSub => {
+        mergedSubscriptions.push(existingSub);
+      });
 
-    setSubscriptions(reindexedSubscriptions);
+      // Update serial numbers
+      finalSubscriptions = mergedSubscriptions.map((sub, index) => ({
+        ...sub,
+        slNo: index + 1
+      }));
+    }
+
+    const finalData = JSON.parse(JSON.stringify(finalSubscriptions)); // Deep copy
+
+    // Add undo action with proper state management
+    addAction({
+      type: 'data.import',
+      description: `${importType === 'replace' ? 'Replaced' : 'Imported'} ${importedData.length} subscriptions`,
+      undo: () => {
+        console.log('Undoing import, restoring:', previousData.length, 'records');
+        setSubscriptions(previousData);
+      },
+      redo: () => {
+        console.log('Redoing import, applying:', finalData.length, 'records');
+        setSubscriptions(finalData);
+      },
+      data: {
+        importType,
+        recordCount: importedData.length,
+        previousCount: previousData.length
+      },
+      previousState: previousData,
+      newState: finalData
+    });
+
+    setSubscriptions(finalSubscriptions);
   };
 
   const handleRenewSubscription = (subscription: Subscription) => {
+    const previousData = JSON.parse(JSON.stringify(subscriptions)); // Deep copy
     const updatedSubscriptions = subscriptions.map(sub => {
       if (sub.id === subscription.id) {
         return {
@@ -55,6 +119,38 @@ export default function Home() {
       return sub;
     });
     
+    const finalData = JSON.parse(JSON.stringify(updatedSubscriptions)); // Deep copy
+    
+    // Log individual renewal action
+    auditLogger.logSubscriptionRenewal(
+      subscription.id.toString(),
+      subscription.imei,
+      subscription.vehicleNo,
+      subscription.customer,
+      subscription.recharge || 1
+    );
+
+    // Add undo action with proper state management
+    addAction({
+      type: 'subscription.renew',
+      description: `Renewed subscription for ${subscription.customer} (${subscription.vehicleNo})`,
+      undo: () => {
+        console.log('Undoing renewal, restoring:', previousData.length, 'records');
+        setSubscriptions(previousData);
+      },
+      redo: () => {
+        console.log('Redoing renewal, applying:', finalData.length, 'records');
+        setSubscriptions(finalData);
+      },
+      data: {
+        subscriptionId: subscription.id,
+        customer: subscription.customer,
+        vehicleNo: subscription.vehicleNo
+      },
+      previousState: previousData,
+      newState: finalData
+    });
+    
     setSubscriptions(updatedSubscriptions);
     
     // Optionally show a success message
@@ -62,6 +158,7 @@ export default function Home() {
   };
 
   const handleBulkRenewSubscriptions = (subscriptionsToRenew: Subscription[], renewalYears: number) => {
+    const previousData = JSON.parse(JSON.stringify(subscriptions)); // Deep copy
     const renewalDate = new Date().toISOString().split('T')[0]; // Today's date
     
     const updatedSubscriptions = subscriptions.map(sub => {
@@ -76,6 +173,36 @@ export default function Home() {
         };
       }
       return sub;
+    });
+    
+    const finalData = JSON.parse(JSON.stringify(updatedSubscriptions)); // Deep copy
+    
+    // Log bulk renewal action (this will also be logged in the expiry table, but this is from the main handler)
+    auditLogger.logBulkRenewal(
+      subscriptionsToRenew.map(sub => sub.id.toString()),
+      renewalYears,
+      subscriptionsToRenew.length
+    );
+
+    // Add undo action with proper state management
+    addAction({
+      type: 'subscription.bulk_renew',
+      description: `Bulk renewed ${subscriptionsToRenew.length} subscriptions for ${renewalYears} year${renewalYears > 1 ? 's' : ''}`,
+      undo: () => {
+        console.log('Undoing bulk renewal, restoring:', previousData.length, 'records');
+        setSubscriptions(previousData);
+      },
+      redo: () => {
+        console.log('Redoing bulk renewal, applying:', finalData.length, 'records');
+        setSubscriptions(finalData);
+      },
+      data: {
+        renewalYears,
+        subscriptionCount: subscriptionsToRenew.length,
+        subscriptionIds: subscriptionsToRenew.map(sub => sub.id)
+      },
+      previousState: previousData,
+      newState: finalData
     });
     
     setSubscriptions(updatedSubscriptions);
@@ -162,7 +289,6 @@ export default function Home() {
           <div className="space-y-6">
             <ModernAnalytics stats={stats} />
             <Charts subscriptions={subscriptions} />
-            <SettingsTest />
           </div>
         );
       case 'analytics':
@@ -243,7 +369,7 @@ export default function Home() {
       case 'import':
         return (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <ExcelImport onImport={handleExcelImport} />
+            <ExcelImport onImport={handleExcelImport} existingData={subscriptions} />
             <Card>
               <CardHeader>
                 <CardTitle>Import Instructions</CardTitle>
@@ -327,6 +453,7 @@ export default function Home() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <UndoRedoToolbar size="sm" />
               {activeView === 'overview' && (
                 <WidgetManager 
                   onWidgetToggle={(widgetId, enabled) => {

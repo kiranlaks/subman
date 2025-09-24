@@ -31,6 +31,7 @@ import {
   Wifi,
   RefreshCw
 } from 'lucide-react';
+import { AuditLogs } from '@/components/audit-logs';
 
 export function AnalyticsLogs() {
   const [selectedDateRange, setSelectedDateRange] = useState('7d');
@@ -271,6 +272,7 @@ export function AnalyticsLogs() {
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="audit">Audit Logs</TabsTrigger>
           <TabsTrigger value="activity">User Activity</TabsTrigger>
           <TabsTrigger value="logins">Login History</TabsTrigger>
           <TabsTrigger value="errors">Error Logs</TabsTrigger>
@@ -369,6 +371,11 @@ export function AnalyticsLogs() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* Audit Logs */}
+        <TabsContent value="audit" className="space-y-6">
+          <AuditLogs />
         </TabsContent>
 
         {/* User Activity */}

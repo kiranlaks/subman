@@ -8,7 +8,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { Slider } from '@/components/ui/slider';
 import { Edit, Trash2, Plus, Save, X, ChevronDown, Search, Eye, EyeOff, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
+import { PaginationWithJump } from '@/components/ui/pagination-with-jump';
 import { cn } from '@/lib/utils';
+import { useUndoRedo } from '@/hooks/use-undo-redo';
+import { auditLogger } from '@/lib/audit-logger';
 
 interface ExcelSubscriptionTableProps {
   data: Subscription[];
@@ -20,6 +23,8 @@ interface ColumnFilter {
 }
 
 export function ExcelSubscriptionTable({ data, onDataChange }: ExcelSubscriptionTableProps) {
+  const { addAction } = useUndoRedo();
+  
   // Define columns first
   const columns = [
     { key: 'slNo', label: 'SL NO', minWidth: 50, maxWidth: 100, type: 'number', priority: 1 },
@@ -130,16 +135,60 @@ export function ExcelSubscriptionTable({ data, onDataChange }: ExcelSubscription
   const handleSaveEdit = () => {
     if (!editingCell) return;
     
+    const previousData = JSON.parse(JSON.stringify(data)); // Deep copy
     const newData = [...data];
     const { row, col } = editingCell;
+    const oldValue = newData[row][col as keyof Subscription];
     
     let value: any = editValue;
     if (col === 'recharge' || col === 'slNo' || col === 'panicButtons') {
       value = parseInt(editValue) || 0;
     }
     
-    newData[row] = { ...newData[row], [col]: value };
-    onDataChange(newData);
+    // Only proceed if value actually changed
+    if (oldValue !== value) {
+      newData[row] = { ...newData[row], [col]: value };
+      const finalNewData = JSON.parse(JSON.stringify(newData));
+      
+      // Log the edit action
+      auditLogger.logSubscriptionEdit(
+        newData[row].id.toString(),
+        newData[row].imei,
+        newData[row].vehicleNo,
+        newData[row].customer,
+        {
+          [col]: {
+            from: oldValue,
+            to: value
+          }
+        }
+      );
+
+      // Add undo action
+      addAction({
+        type: 'subscription.edit',
+        description: `Edited ${col} for ${newData[row].customer} (${newData[row].vehicleNo})`,
+        undo: () => {
+          console.log('Undoing edit, restoring:', previousData.length, 'records');
+          onDataChange(previousData);
+        },
+        redo: () => {
+          console.log('Redoing edit, applying:', finalNewData.length, 'records');
+          onDataChange(finalNewData);
+        },
+        data: {
+          subscriptionId: newData[row].id,
+          field: col,
+          oldValue,
+          newValue: value
+        },
+        previousState: previousData,
+        newState: finalNewData
+      });
+      
+      onDataChange(newData);
+    }
+    
     setEditingCell(null);
   };
 
@@ -157,6 +206,7 @@ export function ExcelSubscriptionTable({ data, onDataChange }: ExcelSubscription
   };
 
   const addNewRow = () => {
+    const previousData = JSON.parse(JSON.stringify(data)); // Deep copy
     const newRow: Subscription = {
       id: Math.max(...data.map(d => d.id)) + 1,
       slNo: data.length + 1,
@@ -173,14 +223,86 @@ export function ExcelSubscriptionTable({ data, onDataChange }: ExcelSubscription
       installationDate: new Date().toLocaleDateString('en-GB'),
       status: 'active'
     };
-    onDataChange([...data, newRow]);
+    const newData = [...data, newRow];
+    const finalNewData = JSON.parse(JSON.stringify(newData));
+
+    // Log the creation
+    auditLogger.log(
+      'subscription.create',
+      'subscription',
+      newRow.id.toString(),
+      {
+        subscriptionId: newRow.id.toString(),
+        action: 'new_row_added',
+        createdFrom: 'subscription_table'
+      }
+    );
+
+    // Add undo action
+    addAction({
+      type: 'subscription.create',
+      description: `Added new subscription row (ID: ${newRow.id})`,
+      undo: () => {
+        console.log('Undoing row addition, restoring:', previousData.length, 'records');
+        onDataChange(previousData);
+      },
+      redo: () => {
+        console.log('Redoing row addition, applying:', finalNewData.length, 'records');
+        onDataChange(finalNewData);
+      },
+      data: {
+        subscriptionId: newRow.id.toString(),
+        newRow: newRow
+      },
+      previousState: previousData,
+      newState: finalNewData
+    });
+
+    onDataChange(newData);
   };
 
   const deleteSelectedRows = () => {
     const selectedIds = new Set(
       Array.from(selectedRows).map(index => paginatedData[index]?.id).filter(Boolean)
     );
+    const previousData = JSON.parse(JSON.stringify(data)); // Deep copy
+    const deletedRows = data.filter(row => selectedIds.has(row.id));
     const newData = data.filter(row => !selectedIds.has(row.id));
+    
+    // Log the deletion
+    deletedRows.forEach(row => {
+      auditLogger.logSubscriptionDeletion(
+        row.id.toString(),
+        row.imei,
+        row.vehicleNo,
+        row.customer,
+        {
+          deletedFrom: 'subscription_table',
+          reason: 'bulk_delete'
+        }
+      );
+    });
+
+    // Add undo action
+    addAction({
+      type: 'subscription.delete',
+      description: `Deleted ${deletedRows.length} subscription${deletedRows.length > 1 ? 's' : ''}`,
+      undo: () => {
+        console.log('Undoing bulk deletion, restoring:', previousData.length, 'records');
+        onDataChange(previousData);
+      },
+      redo: () => {
+        console.log('Redoing bulk deletion, applying:', newData.length, 'records');
+        onDataChange(newData);
+      },
+      data: {
+        deletedCount: deletedRows.length,
+        deletedRows: deletedRows.map(row => ({ id: row.id, customer: row.customer, vehicleNo: row.vehicleNo }))
+      },
+      previousState: previousData,
+      newState: newData
+    });
+
     onDataChange(newData);
     setSelectedRows(new Set());
   };
@@ -650,62 +772,12 @@ export function ExcelSubscriptionTable({ data, onDataChange }: ExcelSubscription
       </div>
 
       {/* Pagination Controls */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between px-2 py-4">
-          <div className="text-sm text-muted-foreground">
-            Page {currentPage} of {totalPages}
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-            >
-              <ChevronLeft className="w-4 h-4 mr-1" />
-              Previous
-            </Button>
-            
-            <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let pageNum;
-                if (totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
-                } else {
-                  pageNum = currentPage - 2 + i;
-                }
-                
-                return (
-                  <Button
-                    key={pageNum}
-                    variant={currentPage === pageNum ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setCurrentPage(pageNum)}
-                    className="w-8 h-8 p-0"
-                  >
-                    {pageNum}
-                  </Button>
-                );
-              })}
-            </div>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-            >
-              Next
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <PaginationWithJump
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        className="px-2 py-4"
+      />
     </div>
   );
 }

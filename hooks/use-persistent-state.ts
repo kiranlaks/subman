@@ -3,20 +3,25 @@ import { userSettingsManager } from '@/lib/user-settings';
 
 // Hook for table-specific persistent state
 export function useTableSettings(tableId: string) {
-  const [settings, setSettings] = useState(() => {
-    // Ensure we have default values even if settings aren't loaded yet
+  // Always start with default values to prevent hydration mismatch
+  const [settings, setSettings] = useState({
+    columnWidths: {} as Record<string, number>,
+    visibleColumns: [] as string[],
+    sortPreference: null as { sortBy: string; sortOrder: 'asc' | 'desc' } | null,
+    pageSize: 20
+  });
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    // Load initial settings
     const currentSettings = userSettingsManager.getTableSettings(tableId);
-    return {
+    setSettings({
       columnWidths: currentSettings.columnWidths || {},
       visibleColumns: currentSettings.visibleColumns || [],
       sortPreference: currentSettings.sortPreference || null,
       pageSize: currentSettings.pageSize || 20
-    };
-  });
-
-  useEffect(() => {
-    // Update settings immediately on mount
-    setSettings(userSettingsManager.getTableSettings(tableId));
+    });
+    setIsLoaded(true);
     
     const unsubscribe = userSettingsManager.subscribe((newSettings) => {
       setSettings(userSettingsManager.getTableSettings(tableId));
@@ -36,24 +41,33 @@ export function useTableSettings(tableId: string) {
   }, [tableId]);
 
   return {
-    settings,
+    settings: isLoaded ? settings : {
+      columnWidths: {} as Record<string, number>,
+      visibleColumns: [] as string[],
+      sortPreference: null as { sortBy: string; sortOrder: 'asc' | 'desc' } | null,
+      pageSize: 20
+    },
     updateSettings
   };
 }
 
 // Hook for filter-specific persistent state
 export function useFilterSettings(viewId: string) {
-  const [settings, setSettings] = useState(() => {
-    const currentSettings = userSettingsManager.getFilterSettings(viewId);
-    return {
-      activeFilters: currentSettings.activeFilters || {},
-      searchTerm: currentSettings.searchTerm || ''
-    };
+  // Always start with default values to prevent hydration mismatch
+  const [settings, setSettings] = useState({
+    activeFilters: {} as Record<string, any>,
+    searchTerm: ''
   });
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    // Update settings immediately on mount
-    setSettings(userSettingsManager.getFilterSettings(viewId));
+    // Load initial settings
+    const currentSettings = userSettingsManager.getFilterSettings(viewId);
+    setSettings({
+      activeFilters: currentSettings.activeFilters || {},
+      searchTerm: currentSettings.searchTerm || ''
+    });
+    setIsLoaded(true);
     
     const unsubscribe = userSettingsManager.subscribe((newSettings) => {
       setSettings(userSettingsManager.getFilterSettings(viewId));
@@ -70,18 +84,29 @@ export function useFilterSettings(viewId: string) {
   }, [viewId]);
 
   return {
-    settings,
+    settings: isLoaded ? settings : {
+      activeFilters: {} as Record<string, any>,
+      searchTerm: ''
+    },
     updateSettings
   };
 }
 
 // Hook for widget settings
 export function useWidgetSettings() {
-  const [settings, setSettings] = useState(() => 
-    userSettingsManager.getSettings().dashboardWidgets
-  );
+  // Always start with default values to prevent hydration mismatch
+  const [settings, setSettings] = useState({
+    enabled: [] as string[],
+    order: [] as string[],
+    sizes: {} as Record<string, { width: number; height: number }>
+  });
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
+    // Load initial settings
+    setSettings(userSettingsManager.getSettings().dashboardWidgets);
+    setIsLoaded(true);
+    
     const unsubscribe = userSettingsManager.subscribe((newSettings) => {
       setSettings(newSettings.dashboardWidgets);
     });
@@ -98,28 +123,32 @@ export function useWidgetSettings() {
   }, []);
 
   return {
-    settings,
+    settings: isLoaded ? settings : {
+      enabled: [] as string[],
+      order: [] as string[],
+      sizes: {} as Record<string, { width: number; height: number }>
+    },
     updateSettings
   };
 }
 
 // Hook for chart preferences
 export function useChartSettings(chartId: string) {
-  const [settings, setSettings] = useState(() => {
-    const allSettings = userSettingsManager.getSettings();
-    return {
-      colors: allSettings.chartPreferences.colors[chartId] || [],
-      sortOrder: allSettings.chartPreferences.sortOrders[chartId] || 'desc'
-    };
+  // Always start with default values to prevent hydration mismatch
+  const [settings, setSettings] = useState({
+    colors: [] as string[],
+    sortOrder: 'desc' as 'asc' | 'desc'
   });
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    // Update settings immediately on mount
+    // Load initial settings
     const allSettings = userSettingsManager.getSettings();
     setSettings({
       colors: allSettings.chartPreferences.colors[chartId] || [],
       sortOrder: allSettings.chartPreferences.sortOrders[chartId] || 'desc'
     });
+    setIsLoaded(true);
     
     const unsubscribe = userSettingsManager.subscribe((newSettings) => {
       setSettings({
@@ -139,22 +168,32 @@ export function useChartSettings(chartId: string) {
   }, [chartId]);
 
   return {
-    settings,
+    settings: isLoaded ? settings : {
+      colors: [] as string[],
+      sortOrder: 'desc' as 'asc' | 'desc'
+    },
     updateSettings
   };
 }
 
 // Hook for layout settings
 export function useLayoutSettings() {
-  const [settings, setSettings] = useState(() => {
-    const allSettings = userSettingsManager.getSettings();
-    return {
-      sidebarCollapsed: allSettings.sidebarCollapsed,
-      theme: allSettings.theme
-    };
+  // Always start with default values to prevent hydration mismatch
+  const [settings, setSettings] = useState({
+    sidebarCollapsed: false,
+    theme: 'system' as 'light' | 'dark' | 'system'
   });
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
+    // Load initial settings
+    const allSettings = userSettingsManager.getSettings();
+    setSettings({
+      sidebarCollapsed: allSettings.sidebarCollapsed,
+      theme: allSettings.theme
+    });
+    setIsLoaded(true);
+    
     const unsubscribe = userSettingsManager.subscribe((newSettings) => {
       setSettings({
         sidebarCollapsed: newSettings.sidebarCollapsed,
@@ -173,7 +212,10 @@ export function useLayoutSettings() {
   }, []);
 
   return {
-    settings,
+    settings: isLoaded ? settings : {
+      sidebarCollapsed: false,
+      theme: 'system' as 'light' | 'dark' | 'system'
+    },
     updateSettings
   };
 }
@@ -184,24 +226,9 @@ export function usePersistentState<T>(
   defaultValue: T,
   category: 'table' | 'filter' | 'widget' | 'chart' | 'layout' = 'table'
 ): [T, (value: T) => void] {
-  const [state, setState] = useState<T>(() => {
-    const allSettings = userSettingsManager.getSettings();
-    
-    switch (category) {
-      case 'table':
-        return (allSettings.columnWidths[key] as T) || defaultValue;
-      case 'filter':
-        return (allSettings.activeFilters[key] as T) || defaultValue;
-      case 'widget':
-        return (allSettings.dashboardWidgets as any)[key] || defaultValue;
-      case 'chart':
-        return (allSettings.chartPreferences as any)[key] || defaultValue;
-      case 'layout':
-        return (allSettings as any)[key] || defaultValue;
-      default:
-        return defaultValue;
-    }
-  });
+  // Always start with default value to prevent hydration mismatch
+  const [state, setState] = useState<T>(defaultValue);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   const setValue = useCallback((value: T) => {
     setState(value);
@@ -227,6 +254,33 @@ export function usePersistentState<T>(
   }, [key, category]);
 
   useEffect(() => {
+    // Load initial value from settings manager
+    const allSettings = userSettingsManager.getSettings();
+    let initialValue: T;
+    
+    switch (category) {
+      case 'table':
+        initialValue = (allSettings.columnWidths[key] as T) || defaultValue;
+        break;
+      case 'filter':
+        initialValue = (allSettings.activeFilters[key] as T) || defaultValue;
+        break;
+      case 'widget':
+        initialValue = (allSettings.dashboardWidgets as any)[key] || defaultValue;
+        break;
+      case 'chart':
+        initialValue = (allSettings.chartPreferences as any)[key] || defaultValue;
+        break;
+      case 'layout':
+        initialValue = (allSettings as any)[key] || defaultValue;
+        break;
+      default:
+        initialValue = defaultValue;
+    }
+    
+    setState(initialValue);
+    setIsLoaded(true);
+
     const unsubscribe = userSettingsManager.subscribe((newSettings) => {
       let newValue: T;
       
@@ -256,5 +310,6 @@ export function usePersistentState<T>(
     return unsubscribe;
   }, [key, category, defaultValue]);
 
-  return [state, setValue];
+  // Return default value until loaded to prevent hydration mismatch
+  return [isLoaded ? state : defaultValue, setValue];
 }

@@ -1,6 +1,16 @@
 # SubMan - Subscription Management Dashboard
 
-A comprehensive subscription management system built with Next.js, TypeScript, and Tailwind CSS. Features advanced analytics, persistent user settings, and comprehensive data management capabilities.
+A comprehensive subscription management system built with Next.js, TypeScript, Tailwind CSS, and Supabase. Features advanced analytics, real-time collaboration, persistent user settings, and enterprise-grade data management capabilities.
+
+## 🆕 **Latest Update: Supabase Integration**
+
+SubMan now includes full Supabase backend integration with:
+- 🔐 **Authentication & User Management**
+- 🗄️ **PostgreSQL Database**
+- ⚡ **Real-time Updates**
+- 📊 **Comprehensive Audit Logging**
+- 🔒 **Row Level Security**
+- 🌐 **Multi-user Collaboration**
 
 ## 🚀 Features
 
@@ -28,18 +38,23 @@ A comprehensive subscription management system built with Next.js, TypeScript, a
 
 - **Framework**: Next.js 14 with App Router
 - **Language**: TypeScript
+- **Backend**: Supabase (PostgreSQL + Auth + Real-time)
 - **Styling**: Tailwind CSS
 - **UI Components**: Radix UI primitives
 - **Charts**: Recharts
-- **State Management**: React hooks with localStorage persistence
+- **State Management**: React Context + Supabase real-time
 - **Data Handling**: Excel import/export with XLSX
 - **Icons**: Lucide React
+- **Authentication**: Supabase Auth with RLS
+- **Database**: PostgreSQL with real-time subscriptions
 
 ## 📦 Installation
 
+### Quick Start
+
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/kiranlaks/subman.git
+   git clone https://github.com/your-username/subman.git
    cd subman
    ```
 
@@ -48,35 +63,73 @@ A comprehensive subscription management system built with Next.js, TypeScript, a
    npm install
    ```
 
-3. **Run the development server**
+3. **Set up Supabase Backend**
+   
+   Follow the detailed setup guide: **[📋 SUPABASE_SETUP.md](SUPABASE_SETUP.md)**
+   
+   Quick steps:
+   - Create a Supabase project
+   - Run the database schema
+   - Configure environment variables
+   
+   ```bash
+   # Create environment file
+   cp .env.example .env.local
+   # Add your Supabase credentials
+   ```
+
+4. **Run the development server**
    ```bash
    npm run dev
    ```
 
-4. **Open your browser**
+5. **Open your browser**
    Navigate to [http://localhost:3000](http://localhost:3000)
+
+### 🔧 Environment Setup
+
+Create a `.env.local` file:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+```
 
 ## 🏗 Project Structure
 
 ```
 subman/
 ├── app/                    # Next.js app directory
+│   ├── login/             # Authentication pages
 │   ├── globals.css        # Global styles
-│   ├── layout.tsx         # Root layout
+│   ├── layout.tsx         # Root layout with providers
 │   └── page.tsx           # Main dashboard page
 ├── components/            # React components
 │   ├── ui/               # Base UI components
+│   ├── settings/         # Settings management components
 │   ├── charts.tsx        # Chart components
 │   ├── expiry-table.tsx  # Expiry management table
-│   ├── settings-panel.tsx # Settings management
 │   └── widget-manager.tsx # Widget configuration
-├── hooks/                # Custom React hooks
-│   ├── use-local-storage.ts    # localStorage persistence
-│   └── use-persistent-state.ts # Advanced state management
 ├── lib/                  # Utility libraries
-│   └── user-settings.ts  # Settings management system
+│   ├── supabase/         # Supabase integration
+│   │   ├── client.ts     # Browser client
+│   │   ├── server.ts     # Server client
+│   │   ├── auth.ts       # Authentication service
+│   │   ├── subscriptions.ts # Subscription service
+│   │   ├── audit.ts      # Audit logging service
+│   │   └── schema.sql    # Database schema
+│   ├── providers/        # React context providers
+│   └── utils.ts          # Utility functions
 ├── types/                # TypeScript type definitions
-└── data/                 # Sample data and schemas
+│   ├── supabase.ts       # Supabase types
+│   ├── subscription.ts   # Legacy types
+│   └── user.ts           # User types
+├── hooks/                # Custom React hooks
+├── data/                 # Sample data
+├── middleware.ts         # Next.js middleware for auth
+├── SUPABASE_SETUP.md     # Supabase setup guide
+└── MIGRATION_GUIDE.md    # Migration documentation
 ```
 
 ## 🎯 Key Components
@@ -85,19 +138,29 @@ subman/
 - **Modern Analytics**: Real-time statistics with trend indicators
 - **Interactive Charts**: Vendor distribution, device analytics, location mapping
 - **Quick Actions**: Export, import, and bulk operations
+- **Real-time Updates**: Live data synchronization across all users
 
 ### Subscription Management
 - **Excel-like Table**: Inline editing with persistent column settings
 - **Advanced Filtering**: Multi-column filters with saved states
 - **Bulk Operations**: Mass updates and renewals
+- **Real-time Collaboration**: See changes from other users instantly
 
 ### Expiry Management
 - **Smart Calculations**: Automatic expiry date computation based on recharge periods
 - **Status Tracking**: Visual indicators for expired, expiring, and active subscriptions
 - **Renewal Workflows**: Streamlined renewal process with bulk capabilities
+- **Automated Notifications**: Real-time alerts for upcoming expirations
+
+### Authentication & Security
+- **Role-based Access**: Admin, Manager, Operator, and Viewer roles
+- **Row Level Security**: Database-level security policies
+- **Audit Logging**: Complete activity tracking for compliance
+- **Session Management**: Secure authentication with Supabase Auth
 
 ### Settings System
-- **Persistent Preferences**: All UI changes automatically saved
+- **Persistent Preferences**: All UI changes automatically saved to database
+- **User Management**: Admin interface for user creation and role assignment
 - **Export/Import**: Backup and restore settings configurations
 - **Component-Specific Resets**: Granular control over different setting categories
 

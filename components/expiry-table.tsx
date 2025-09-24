@@ -10,6 +10,9 @@ import { Slider } from '@/components/ui/slider';
 import { Edit, Trash2, Plus, Save, X, ChevronDown, Search, Eye, EyeOff, ChevronLeft, ChevronRight, Settings, Calendar, Filter, Download, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTableColumnSettings, useFilterSettings } from '@/hooks/use-local-storage';
+import { auditLogger } from '@/lib/audit-logger';
+import { PaginationWithJump } from '@/components/ui/pagination-with-jump';
+import { useUndoRedo } from '@/hooks/use-undo-redo';
 
 interface ExpiryTableProps {
   data: Subscription[];
@@ -29,6 +32,8 @@ interface ExpirySubscription extends Subscription {
 }
 
 export function ExpiryTable({ data, onDataChange, onRenewSubscription, onBulkRenewSubscriptions }: ExpiryTableProps) {
+  const { addAction } = useUndoRedo();
+  
   // Define columns first
   const columns = [
     { key: 'slNo', label: 'SL NO', minWidth: 50, maxWidth: 100, type: 'number', priority: 1 },
@@ -240,16 +245,60 @@ export function ExpiryTable({ data, onDataChange, onRenewSubscription, onBulkRen
   const handleSaveEdit = () => {
     if (!editingCell) return;
     
+    const previousData = JSON.parse(JSON.stringify(data)); // Deep copy to avoid reference issues
     const newData = [...data];
     const { row, col } = editingCell;
+    const oldValue = newData[row][col as keyof Subscription];
     
     let value: any = editValue;
     if (col === 'recharge' || col === 'slNo' || col === 'panicButtons') {
       value = parseInt(editValue) || 0;
     }
     
-    newData[row] = { ...newData[row], [col]: value };
-    onDataChange(newData);
+    // Only proceed if value actually changed
+    if (oldValue !== value) {
+      newData[row] = { ...newData[row], [col]: value };
+      const finalNewData = JSON.parse(JSON.stringify(newData));
+      
+      // Log the edit action
+      auditLogger.logSubscriptionEdit(
+        newData[row].id.toString(),
+        newData[row].imei,
+        newData[row].vehicleNo,
+        newData[row].customer,
+        {
+          [col]: {
+            from: oldValue,
+            to: value
+          }
+        }
+      );
+
+      // Add undo action with proper state management
+      addAction({
+        type: 'subscription.edit',
+        description: `Edited ${col} for ${newData[row].customer} (${newData[row].vehicleNo})`,
+        undo: () => {
+          console.log('Undoing edit, restoring:', previousData.length, 'records');
+          onDataChange(previousData);
+        },
+        redo: () => {
+          console.log('Redoing edit, applying:', finalNewData.length, 'records');
+          onDataChange(finalNewData);
+        },
+        data: {
+          subscriptionId: newData[row].id,
+          field: col,
+          oldValue,
+          newValue: value
+        },
+        previousState: previousData,
+        newState: finalNewData
+      });
+      
+      onDataChange(newData);
+    }
+    
     setEditingCell(null);
   };
 
@@ -306,6 +355,10 @@ export function ExpiryTable({ data, onDataChange, onRenewSubscription, onBulkRen
     setExpiryFilter('all');
     setCustomStartDate('');
     setCustomEndDate('');
+    
+    // Clear persistent storage as well
+    setSavedSearchTerm('');
+    setSavedActiveFilters({});
   };
 
   const toggleColumnVisibility = (columnKey: string) => {
@@ -407,6 +460,13 @@ export function ExpiryTable({ data, onDataChange, onRenewSubscription, onBulkRen
 
     const selectedSubscriptions = paginatedData.filter((_, index) => selectedRows.has(index));
     
+    // Log bulk renewal action
+    auditLogger.logBulkRenewal(
+      selectedSubscriptions.map(sub => sub.id.toString()),
+      renewalYears,
+      selectedSubscriptions.length
+    );
+    
     if (onBulkRenewSubscriptions) {
       onBulkRenewSubscriptions(selectedSubscriptions, renewalYears);
       setSelectedRows(new Set()); // Clear selection after renewal
@@ -425,6 +485,13 @@ export function ExpiryTable({ data, onDataChange, onRenewSubscription, onBulkRen
           return;
         }
 
+        // Log export action
+        auditLogger.logDataExport(
+          `expiry-${templateName}`,
+          exportData.length,
+          { exportFilter, templateName }
+        );
+
         const ws = XLSX.utils.json_to_sheet(exportData);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Expiry Report');
@@ -436,19 +503,40 @@ export function ExpiryTable({ data, onDataChange, onRenewSubscription, onBulkRen
       }).catch((error) => {
         console.error('Export failed:', error);
         alert('Export failed. Please try again.');
+        
+        // Log export failure
+        auditLogger.log(
+          'data.export',
+          'expiry-data',
+          `expiry-${templateName}`,
+          { exportFilter, templateName, error: error.message },
+          false,
+          error.message
+        );
       });
     } catch (error) {
       console.error('Export error:', error);
       alert('Export functionality not available.');
+      
+      // Log export error
+      auditLogger.log(
+        'data.export',
+        'expiry-data',
+        `expiry-${templateName}`,
+        { exportFilter, templateName, error: (error as Error).message },
+        false,
+        (error as Error).message
+      );
     }
   };
 
   return (
     <div className="w-full space-y-4">
       {/* Search and Controls */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-        <div className="flex gap-3 items-center flex-wrap">
-          {/* Export Button */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+          <div className="flex gap-3 items-center flex-wrap">
+            {/* Export Button */}
           <DropdownMenu open={showExportOptions} onOpenChange={setShowExportOptions}>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
@@ -596,38 +684,44 @@ export function ExpiryTable({ data, onDataChange, onRenewSubscription, onBulkRen
               Clear All
             </Button>
           )}
+          </div>
+          
+          <div className="text-sm text-muted-foreground whitespace-nowrap">
+            Showing {startIndex + 1}-{Math.min(endIndex, filteredData.length)} of {filteredData.length} records
+          </div>
         </div>
         
-        <div className="flex gap-3 items-center flex-1 min-w-0">
-          {/* Search Input */}
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-            <Input
-              placeholder="Search all columns..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setSavedSearchTerm(e.target.value);
-              }}
-              className="pl-10 h-9"
-            />
-          </div>
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+          <div className="flex gap-3 items-center flex-1 min-w-0">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+              <Input
+                placeholder="Search all columns..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setSavedSearchTerm(e.target.value);
+                }}
+                className="pl-10 h-9"
+              />
+            </div>
 
-          {/* Expiry Filter */}
-          <DropdownMenu open={showExpiryFilter} onOpenChange={setShowExpiryFilter}>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className={expiryFilter !== 'all' ? 'bg-blue-50 border-blue-200' : ''}>
-                <Filter className="w-4 h-4 mr-2" />
-                {expiryFilter === 'all' ? 'All Expiry' : 
-                 expiryFilter === '30days' ? '30 Days' :
-                 expiryFilter === '2months' ? '2 Months' :
-                 expiryFilter === '3months' ? '3 Months' :
-                 expiryFilter === '6months' ? '6 Months' :
-                 expiryFilter === '1year' ? '1 Year' :
-                 expiryFilter === 'expired' ? 'Expired' :
-                 expiryFilter === 'custom' ? 'Custom' : 'Filter'}
-              </Button>
-            </DropdownMenuTrigger>
+            {/* Expiry Filter */}
+            <DropdownMenu open={showExpiryFilter} onOpenChange={setShowExpiryFilter}>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className={expiryFilter !== 'all' ? 'bg-blue-50 border-blue-200' : ''}>
+                  <Filter className="w-4 h-4 mr-2" />
+                  {expiryFilter === 'all' ? 'All Expiry' : 
+                   expiryFilter === '30days' ? '30 Days' :
+                   expiryFilter === '2months' ? '2 Months' :
+                   expiryFilter === '3months' ? '3 Months' :
+                   expiryFilter === '6months' ? '6 Months' :
+                   expiryFilter === '1year' ? '1 Year' :
+                   expiryFilter === 'expired' ? 'Expired' :
+                   expiryFilter === 'custom' ? 'Custom' : 'Filter'}
+                </Button>
+              </DropdownMenuTrigger>
             <DropdownMenuContent 
               align="end" 
               side="bottom" 
@@ -825,10 +919,7 @@ export function ExpiryTable({ data, onDataChange, onRenewSubscription, onBulkRen
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-        
-        <div className="text-sm text-muted-foreground whitespace-nowrap">
-          Showing {startIndex + 1}-{Math.min(endIndex, filteredData.length)} of {filteredData.length} records
+          </div>
         </div>
       </div>
 
@@ -1036,62 +1127,12 @@ export function ExpiryTable({ data, onDataChange, onRenewSubscription, onBulkRen
       </div>
 
       {/* Pagination Controls */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between px-2 py-4">
-          <div className="text-sm text-muted-foreground">
-            Page {currentPage} of {totalPages}
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-            >
-              <ChevronLeft className="w-4 h-4 mr-1" />
-              Previous
-            </Button>
-            
-            <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let pageNum;
-                if (totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
-                } else {
-                  pageNum = currentPage - 2 + i;
-                }
-                
-                return (
-                  <Button
-                    key={pageNum}
-                    variant={currentPage === pageNum ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setCurrentPage(pageNum)}
-                    className="w-8 h-8 p-0"
-                  >
-                    {pageNum}
-                  </Button>
-                );
-              })}
-            </div>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-            >
-              Next
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <PaginationWithJump
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        className="px-2 py-4"
+      />
     </div>
   );
 }

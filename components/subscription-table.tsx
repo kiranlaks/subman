@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Edit, Trash2, Plus, Save, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useUndoRedo } from '@/hooks/use-undo-redo';
+import { auditLogger } from '@/lib/audit-logger';
 
 interface SubscriptionTableProps {
   data: Subscription[];
@@ -14,6 +16,7 @@ interface SubscriptionTableProps {
 }
 
 export function SubscriptionTable({ data, onDataChange }: SubscriptionTableProps) {
+  const { addAction } = useUndoRedo();
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
@@ -47,8 +50,10 @@ export function SubscriptionTable({ data, onDataChange }: SubscriptionTableProps
   const handleSaveEdit = () => {
     if (!editingCell) return;
 
+    const previousData = JSON.parse(JSON.stringify(data)); // Deep copy
     const newData = [...data];
     const { row, col } = editingCell;
+    const oldValue = newData[row][col as keyof Subscription];
 
     // Type conversion based on column
     let value: any = editValue;
@@ -56,8 +61,50 @@ export function SubscriptionTable({ data, onDataChange }: SubscriptionTableProps
       value = parseInt(editValue) || 0;
     }
 
-    newData[row] = { ...newData[row], [col]: value };
-    onDataChange(newData);
+    // Only proceed if value actually changed
+    if (oldValue !== value) {
+      newData[row] = { ...newData[row], [col]: value };
+      const finalNewData = JSON.parse(JSON.stringify(newData));
+      
+      // Log the edit action
+      auditLogger.logSubscriptionEdit(
+        newData[row].id.toString(),
+        newData[row].imei,
+        newData[row].vehicleNo,
+        newData[row].customer,
+        {
+          [col]: {
+            from: oldValue,
+            to: value
+          }
+        }
+      );
+
+      // Add undo action
+      addAction({
+        type: 'subscription.edit',
+        description: `Edited ${col} for ${newData[row].customer} (${newData[row].vehicleNo})`,
+        undo: () => {
+          console.log('Undoing edit, restoring:', previousData.length, 'records');
+          onDataChange(previousData);
+        },
+        redo: () => {
+          console.log('Redoing edit, applying:', finalNewData.length, 'records');
+          onDataChange(finalNewData);
+        },
+        data: {
+          subscriptionId: newData[row].id,
+          field: col,
+          oldValue,
+          newValue: value
+        },
+        previousState: previousData,
+        newState: finalNewData
+      });
+      
+      onDataChange(newData);
+    }
+    
     setEditingCell(null);
   };
 
@@ -75,6 +122,7 @@ export function SubscriptionTable({ data, onDataChange }: SubscriptionTableProps
   };
 
   const addNewRow = () => {
+    const previousData = JSON.parse(JSON.stringify(data)); // Deep copy
     const newRow: Subscription = {
       id: Math.max(...data.map(d => d.id)) + 1,
       slNo: data.length + 1,
@@ -91,11 +139,84 @@ export function SubscriptionTable({ data, onDataChange }: SubscriptionTableProps
       installationDate: new Date().toLocaleDateString('en-GB'),
       status: 'active'
     };
-    onDataChange([...data, newRow]);
+    const newData = [...data, newRow];
+    const finalNewData = JSON.parse(JSON.stringify(newData));
+
+    // Log the creation
+    auditLogger.log(
+      'subscription.create',
+      'subscription',
+      newRow.id.toString(),
+      {
+        subscriptionId: newRow.id.toString(),
+        action: 'new_row_added',
+        createdFrom: 'basic_subscription_table'
+      }
+    );
+
+    // Add undo action
+    addAction({
+      type: 'subscription.create',
+      description: `Added new subscription row (ID: ${newRow.id})`,
+      undo: () => {
+        console.log('Undoing row addition, restoring:', previousData.length, 'records');
+        onDataChange(previousData);
+      },
+      redo: () => {
+        console.log('Redoing row addition, applying:', finalNewData.length, 'records');
+        onDataChange(finalNewData);
+      },
+      data: {
+        subscriptionId: newRow.id.toString(),
+        newRow: newRow
+      },
+      previousState: previousData,
+      newState: finalNewData
+    });
+
+    onDataChange(newData);
   };
 
   const deleteSelectedRows = () => {
+    const previousData = JSON.parse(JSON.stringify(data)); // Deep copy
+    const deletedRows = Array.from(selectedRows).map(index => data[index]).filter(Boolean);
     const newData = data.filter((_, index) => !selectedRows.has(index));
+    const finalNewData = JSON.parse(JSON.stringify(newData));
+    
+    // Log the deletion
+    deletedRows.forEach(row => {
+      auditLogger.logSubscriptionDeletion(
+        row.id.toString(),
+        row.imei,
+        row.vehicleNo,
+        row.customer,
+        {
+          deletedFrom: 'basic_subscription_table',
+          reason: 'bulk_delete'
+        }
+      );
+    });
+
+    // Add undo action
+    addAction({
+      type: 'subscription.delete',
+      description: `Deleted ${deletedRows.length} subscription${deletedRows.length > 1 ? 's' : ''}`,
+      undo: () => {
+        console.log('Undoing bulk deletion, restoring:', previousData.length, 'records');
+        onDataChange(previousData);
+      },
+      redo: () => {
+        console.log('Redoing bulk deletion, applying:', finalNewData.length, 'records');
+        onDataChange(finalNewData);
+      },
+      data: {
+        deletedCount: deletedRows.length,
+        deletedRows: deletedRows.map(row => ({ id: row.id, customer: row.customer, vehicleNo: row.vehicleNo }))
+      },
+      previousState: previousData,
+      newState: finalNewData
+    });
+
     onDataChange(newData);
     setSelectedRows(new Set());
   };
