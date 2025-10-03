@@ -1,6 +1,6 @@
 import { authService } from '@/lib/supabase/auth'
 import type { UserProfile } from '@/types/supabase'
-import type { User } from '@supabase/supabase-js'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 
 // Updated auth manager that uses Supabase instead of mock data
 class SupabaseAuthManager {
@@ -10,12 +10,12 @@ class SupabaseAuthManager {
   }
 
   // Get current Supabase user
-  async getCurrentSupabaseUser(): Promise<User | null> {
+  async getCurrentSupabaseUser(): Promise<SupabaseUser | null> {
     return authService.getCurrentUser()
   }
 
   // Login
-  async login(email: string, password: string): Promise<{ user: User | null; error: string | null }> {
+  async login(email: string, password: string): Promise<{ user: SupabaseUser | null; error: string | null }> {
     return authService.signIn(email, password)
   }
 
@@ -67,7 +67,7 @@ class SupabaseAuthManager {
     lastName: string
     role: 'admin' | 'manager' | 'operator' | 'viewer'
     department?: string
-  }): Promise<{ user: User | null; error: string | null }> {
+  }): Promise<{ user: SupabaseUser | null; error: string | null }> {
     return authService.createUser(userData)
   }
 
@@ -110,7 +110,7 @@ class SupabaseAuthManager {
 export const authManager = new SupabaseAuthManager()
 
 // Export legacy interface for backward compatibility
-export interface User extends UserProfile {
+export interface User extends Omit<UserProfile, 'role'> {
   role: {
     id: string
     name: string

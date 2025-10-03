@@ -1,11 +1,13 @@
 import { createClient } from './client'
-import type { 
-  Subscription, 
-  SubscriptionInsert, 
+import type {
+  Subscription,
+  SubscriptionInsert,
   SubscriptionUpdate,
-  LegacySubscription,
+  LegacySubscription
+} from '@/types/supabase'
+import {
   convertToSupabaseFormat,
-  convertFromSupabaseFormat 
+  convertFromSupabaseFormat
 } from '@/types/supabase'
 
 export class SubscriptionService {
