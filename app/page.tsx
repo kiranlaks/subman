@@ -63,74 +63,107 @@ export default function Home() {
     setSubscriptions(newData);
   };
 
-  const handleExcelImport = (importedData: Subscription[], importType: 'replace' | 'merge') => {
+  const handleExcelImport = async (importedData: Subscription[], importType: 'replace' | 'merge') => {
     const previousData = JSON.parse(JSON.stringify(subscriptions)); // Deep copy
     let finalSubscriptions: Subscription[];
 
-    if (importType === 'replace') {
-      // Replace all existing data
-      finalSubscriptions = importedData.map((sub, index) => ({
-        ...sub,
-        slNo: index + 1
-      }));
-    } else {
-      // Merge with existing data
-      const existingImeis = new Map(subscriptions.map(s => [s.imei, s]));
-      const mergedSubscriptions: Subscription[] = [];
-      
-      // Add/update from imported data
-      importedData.forEach(importedSub => {
-        const existing = existingImeis.get(importedSub.imei);
-        if (existing) {
-          // Update existing record
-          mergedSubscriptions.push({
-            ...existing,
-            ...importedSub,
-            id: existing.id, // Preserve original ID
-          });
-          existingImeis.delete(importedSub.imei); // Mark as processed
-        } else {
-          // Add new record
-          mergedSubscriptions.push(importedSub);
-        }
-      });
-      
-      // Add remaining existing records that weren't in import
-      existingImeis.forEach(existingSub => {
-        mergedSubscriptions.push(existingSub);
+    try {
+      if (importType === 'replace') {
+        // Replace all existing data
+        finalSubscriptions = importedData.map((sub, index) => ({
+          ...sub,
+          slNo: index + 1
+        }));
+
+        // TODO: When Supabase is configured, uncomment this:
+        // 1. Delete all existing subscriptions from Supabase
+        // 2. Bulk create new subscriptions in Supabase
+        // Example:
+        // const { subscriptionService } = await import('@/lib/supabase/subscriptions');
+        // await subscriptionService.bulkCreate(finalSubscriptions);
+        
+      } else {
+        // Merge with existing data
+        const existingImeis = new Map(subscriptions.map(s => [s.imei, s]));
+        const mergedSubscriptions: Subscription[] = [];
+        const toCreate: Subscription[] = [];
+        const toUpdate: { id: number; data: Partial<Subscription> }[] = [];
+        
+        // Add/update from imported data
+        importedData.forEach(importedSub => {
+          const existing = existingImeis.get(importedSub.imei);
+          if (existing) {
+            // Update existing record
+            const updated = {
+              ...existing,
+              ...importedSub,
+              id: existing.id, // Preserve original ID
+            };
+            mergedSubscriptions.push(updated);
+            toUpdate.push({ id: existing.id, data: importedSub });
+            existingImeis.delete(importedSub.imei); // Mark as processed
+          } else {
+            // Add new record
+            mergedSubscriptions.push(importedSub);
+            toCreate.push(importedSub);
+          }
+        });
+        
+        // Add remaining existing records that weren't in import
+        existingImeis.forEach(existingSub => {
+          mergedSubscriptions.push(existingSub);
+        });
+
+        // Update serial numbers
+        finalSubscriptions = mergedSubscriptions.map((sub, index) => ({
+          ...sub,
+          slNo: index + 1
+        }));
+
+        // TODO: When Supabase is configured, uncomment this:
+        // const { subscriptionService } = await import('@/lib/supabase/subscriptions');
+        // if (toCreate.length > 0) {
+        //   await subscriptionService.bulkCreate(toCreate);
+        // }
+        // if (toUpdate.length > 0) {
+        //   await subscriptionService.bulkUpdate(toUpdate);
+        // }
+      }
+
+      const finalData = JSON.parse(JSON.stringify(finalSubscriptions)); // Deep copy
+
+      // Add undo action with proper state management
+      addAction({
+        type: 'data.import',
+        description: `${importType === 'replace' ? 'Replaced' : 'Imported'} ${importedData.length} subscriptions`,
+        undo: () => {
+          console.log('Undoing import, restoring:', previousData.length, 'records');
+          setSubscriptions(previousData);
+          // TODO: When Supabase is configured, sync undo to database
+        },
+        redo: () => {
+          console.log('Redoing import, applying:', finalData.length, 'records');
+          setSubscriptions(finalData);
+          // TODO: When Supabase is configured, sync redo to database
+        },
+        data: {
+          importType,
+          recordCount: importedData.length,
+          previousCount: previousData.length
+        },
+        previousState: previousData,
+        newState: finalData
       });
 
-      // Update serial numbers
-      finalSubscriptions = mergedSubscriptions.map((sub, index) => ({
-        ...sub,
-        slNo: index + 1
-      }));
+      setSubscriptions(finalSubscriptions);
+      
+      console.log('✅ Data imported successfully. To enable Supabase sync, configure your .env.local with Supabase credentials.');
+    } catch (error) {
+      console.error('Error importing data:', error);
+      // Revert to previous data on error
+      setSubscriptions(previousData);
+      throw error;
     }
-
-    const finalData = JSON.parse(JSON.stringify(finalSubscriptions)); // Deep copy
-
-    // Add undo action with proper state management
-    addAction({
-      type: 'data.import',
-      description: `${importType === 'replace' ? 'Replaced' : 'Imported'} ${importedData.length} subscriptions`,
-      undo: () => {
-        console.log('Undoing import, restoring:', previousData.length, 'records');
-        setSubscriptions(previousData);
-      },
-      redo: () => {
-        console.log('Redoing import, applying:', finalData.length, 'records');
-        setSubscriptions(finalData);
-      },
-      data: {
-        importType,
-        recordCount: importedData.length,
-        previousCount: previousData.length
-      },
-      previousState: previousData,
-      newState: finalData
-    });
-
-    setSubscriptions(finalSubscriptions);
   };
 
   const handleRenewSubscription = (subscription: Subscription) => {
