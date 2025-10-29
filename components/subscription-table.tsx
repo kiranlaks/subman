@@ -1,14 +1,17 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Subscription } from '@/types/subscription';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Edit, Trash2, Plus, Save, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useUndoRedo } from '@/hooks/use-undo-redo';
+import { Badge } from '@/components/ui/badge';
+import { Search, Download, Filter, Edit, Trash2, X, AlertTriangle, Plus } from 'lucide-react';
+import { PaginationWithJump } from '@/components/ui/pagination-with-jump';
+import { Subscription } from '@/types/subscription';
 import { auditLogger } from '@/lib/audit-logger';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { useUndoRedo } from '@/hooks/use-undo-redo';
 
 interface SubscriptionTableProps {
   data: Subscription[];
@@ -16,115 +19,198 @@ interface SubscriptionTableProps {
 }
 
 export function SubscriptionTable({ data, onDataChange }: SubscriptionTableProps) {
+  const { toast } = useToast();
   const { addAction } = useUndoRedo();
-  const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [editDialog, setEditDialog] = useState<{ isOpen: boolean; subscription: Subscription | null }>({
+    isOpen: false,
+    subscription: null
+  });
+  const [editValues, setEditValues] = useState<Partial<Subscription>>({});
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; subscription: Subscription | null }>({
+    isOpen: false,
+    subscription: null
+  });
+  const itemsPerPage = 10;
 
-  const columns = [
-    { key: 'slNo', label: 'SL NO', width: '80px' },
-    { key: 'imei', label: 'IMEI', width: '150px' },
-    { key: 'device', label: 'DEVICE', width: '120px' },
-    { key: 'vendor', label: 'VENDOR', width: '120px' },
-    { key: 'vehicleNo', label: 'VEHICLE NO', width: '130px' },
-    { key: 'customer', label: 'CUSTOMER', width: '150px' },
-    { key: 'phoneNo', label: 'PHONE NO', width: '120px' },
-    { key: 'tagPlace', label: 'TAG PLACE', width: '120px' },
-    { key: 'recharge', label: 'RECHARGE', width: '100px' },
-    { key: 'installDate', label: 'INSTALL DATE', width: '120px' },
-  ];
+  // Filter active subscriptions (not renewed)
+  const activeSubscriptions = data.filter(sub => !sub.renewalDate && sub.status === 'active');
 
-  useEffect(() => {
-    if (editingCell && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+  // Filter based on search term
+  const filteredData = activeSubscriptions.filter(subscription =>
+    Object.values(subscription).some(value =>
+      value?.toString().toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  );
+
+  // Pagination
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedData = filteredData.slice(startIndex, startIndex + itemsPerPage);
+
+  const formatDate = (dateString: string) => {
+    try {
+      return new Date(dateString).toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+    } catch {
+      return dateString;
     }
-  }, [editingCell]);
+  };
 
-  const handleCellClick = (rowIndex: number, colKey: string, currentValue: any) => {
-    setEditingCell({ row: rowIndex, col: colKey });
-    setEditValue(String(currentValue || ''));
+  const handleEditClick = (subscription: Subscription) => {
+    setEditDialog({ isOpen: true, subscription });
+    setEditValues({
+      vehicleNo: subscription.vehicleNo,
+      customer: subscription.customer,
+      phoneNo: subscription.phoneNo,
+      tagPlace: subscription.tagPlace,
+      imei: subscription.imei,
+      device: subscription.device,
+      vendor: subscription.vendor,
+      status: subscription.status,
+      installationDate: subscription.installationDate,
+      recharge: subscription.recharge,
+      panicButtons: subscription.panicButtons
+    });
   };
 
   const handleSaveEdit = () => {
-    if (!editingCell) return;
+    if (!editDialog.subscription) return;
 
-    const previousData = JSON.parse(JSON.stringify(data)); // Deep copy
-    const newData = [...data];
-    const { row, col } = editingCell;
-    const oldValue = newData[row][col as keyof Subscription];
-
-    // Type conversion based on column
-    let value: any = editValue;
-    if (col === 'recharge' || col === 'slNo') {
-      value = parseInt(editValue) || 0;
-    }
-
-    // Only proceed if value actually changed
-    if (oldValue !== value) {
-      newData[row] = { ...newData[row], [col]: value };
-      const finalNewData = JSON.parse(JSON.stringify(newData));
-      
-      // Log the edit action
-      auditLogger.logSubscriptionEdit(
-        newData[row].id.toString(),
-        newData[row].imei,
-        newData[row].vehicleNo,
-        newData[row].customer,
-        {
-          [col]: {
-            from: oldValue,
-            to: value
-          }
-        }
-      );
-
-      // Add undo action
-      addAction({
-        type: 'subscription.edit',
-        description: `Edited ${col} for ${newData[row].customer} (${newData[row].vehicleNo})`,
-        undo: () => {
-          console.log('Undoing edit, restoring:', previousData.length, 'records');
-          onDataChange(previousData);
-        },
-        redo: () => {
-          console.log('Redoing edit, applying:', finalNewData.length, 'records');
-          onDataChange(finalNewData);
-        },
-        data: {
-          subscriptionId: newData[row].id,
-          field: col,
-          oldValue,
-          newValue: value
-        },
-        previousState: previousData,
-        newState: finalNewData
-      });
-      
-      onDataChange(newData);
-    }
+    const subscription = editDialog.subscription;
+    const previousData = JSON.parse(JSON.stringify(data));
     
-    setEditingCell(null);
-  };
+    // Track changes
+    const changes: Record<string, { from: any; to: any }> = {};
+    let hasChanges = false;
+    
+    Object.keys(editValues).forEach(key => {
+      const oldValue = subscription[key as keyof Subscription];
+      const newValue = editValues[key as keyof Subscription];
+      if (oldValue !== newValue) {
+        changes[key] = { from: oldValue, to: newValue };
+        hasChanges = true;
+      }
+    });
 
-  const handleCancelEdit = () => {
-    setEditingCell(null);
-    setEditValue('');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSaveEdit();
-    } else if (e.key === 'Escape') {
-      handleCancelEdit();
+    if (!hasChanges) {
+      toast({
+        title: "No Changes",
+        description: "No changes were made to the subscription.",
+      });
+      setEditDialog({ isOpen: false, subscription: null });
+      return;
     }
+
+    const updatedData = data.map(sub => 
+      sub.id === subscription.id 
+        ? { ...sub, ...editValues }
+        : sub
+    );
+
+    // Log the changes
+    auditLogger.logSubscriptionEdit(
+      subscription.id.toString(),
+      subscription.imei,
+      subscription.vehicleNo,
+      subscription.customer,
+      changes
+    );
+
+    const finalUpdatedData = JSON.parse(JSON.stringify(updatedData));
+    
+    // Add undo action
+    addAction({
+      type: 'subscription.edit',
+      description: `Edited ${Object.keys(changes).length} field(s) for ${subscription.customer} (${subscription.vehicleNo})`,
+      undo: () => {
+        onDataChange(previousData);
+      },
+      redo: () => {
+        onDataChange(finalUpdatedData);
+      },
+      data: {
+        subscriptionId: subscription.id,
+        customer: subscription.customer,
+        vehicleNo: subscription.vehicleNo,
+        changes
+      },
+      previousState: previousData,
+      newState: finalUpdatedData
+    });
+
+    onDataChange(updatedData);
+    
+    toast({
+      title: "Subscription Updated",
+      description: `Successfully updated ${Object.keys(changes).length} field(s)`,
+    });
+    
+    setEditDialog({ isOpen: false, subscription: null });
   };
 
-  const addNewRow = () => {
-    const previousData = JSON.parse(JSON.stringify(data)); // Deep copy
-    const newRow: Subscription = {
-      id: Math.max(...data.map(d => d.id)) + 1,
+  const handleDeleteClick = (subscription: Subscription) => {
+    setDeleteDialog({ isOpen: true, subscription });
+  };
+
+  const handleDeleteConfirm = () => {
+    if (!deleteDialog.subscription) return;
+
+    const subscriptionToDelete = deleteDialog.subscription;
+    const previousData = JSON.parse(JSON.stringify(data));
+    
+    auditLogger.logSubscriptionDeletion(
+      subscriptionToDelete.id.toString(),
+      subscriptionToDelete.imei,
+      subscriptionToDelete.vehicleNo,
+      subscriptionToDelete.customer,
+      {
+        deletedFrom: 'subscription_table',
+        reason: 'user_initiated_deletion'
+      }
+    );
+
+    const updatedData = data.filter(sub => sub.id !== subscriptionToDelete.id);
+    const finalUpdatedData = JSON.parse(JSON.stringify(updatedData));
+    
+    addAction({
+      type: 'subscription.delete',
+      description: `Deleted subscription for ${subscriptionToDelete.customer} (${subscriptionToDelete.vehicleNo})`,
+      undo: () => {
+        onDataChange(previousData);
+      },
+      redo: () => {
+        onDataChange(finalUpdatedData);
+      },
+      data: {
+        subscriptionId: subscriptionToDelete.id,
+        customer: subscriptionToDelete.customer,
+        vehicleNo: subscriptionToDelete.vehicleNo,
+        deletedSubscription: subscriptionToDelete
+      },
+      previousState: previousData,
+      newState: finalUpdatedData
+    });
+
+    onDataChange(updatedData);
+    
+    toast({
+      title: "Subscription Deleted",
+      description: `Successfully deleted subscription for ${subscriptionToDelete.customer}`,
+      variant: "destructive"
+    });
+    
+    setDeleteDialog({ isOpen: false, subscription: null });
+  };
+
+  const handleAddNew = () => {
+    const previousData = JSON.parse(JSON.stringify(data));
+    const newSubscription: Subscription = {
+      id: Math.max(...data.map(d => d.id), 0) + 1,
       slNo: data.length + 1,
       date: new Date().toLocaleDateString('en-GB'),
       imei: '',
@@ -134,210 +220,421 @@ export function SubscriptionTable({ data, onDataChange }: SubscriptionTableProps
       customer: '',
       phoneNo: '',
       tagPlace: '',
-      panicButtons: 0,
-      recharge: 0,
-      installationDate: new Date().toLocaleDateString('en-GB'),
+      panicButtons: 1,
+      recharge: 1,
+      installationDate: new Date().toISOString().split('T')[0],
       status: 'active'
     };
-    const newData = [...data, newRow];
-    const finalNewData = JSON.parse(JSON.stringify(newData));
 
-    // Log the creation
+    const updatedData = [...data, newSubscription];
+    const finalUpdatedData = JSON.parse(JSON.stringify(updatedData));
+
     auditLogger.log(
       'subscription.create',
       'subscription',
-      newRow.id.toString(),
+      newSubscription.id.toString(),
       {
-        subscriptionId: newRow.id.toString(),
-        action: 'new_row_added',
-        createdFrom: 'basic_subscription_table'
+        subscriptionId: newSubscription.id.toString(),
+        action: 'new_subscription_added'
       }
     );
 
-    // Add undo action
     addAction({
       type: 'subscription.create',
-      description: `Added new subscription row (ID: ${newRow.id})`,
+      description: `Added new subscription`,
       undo: () => {
-        console.log('Undoing row addition, restoring:', previousData.length, 'records');
         onDataChange(previousData);
       },
       redo: () => {
-        console.log('Redoing row addition, applying:', finalNewData.length, 'records');
-        onDataChange(finalNewData);
+        onDataChange(finalUpdatedData);
       },
       data: {
-        subscriptionId: newRow.id.toString(),
-        newRow: newRow
+        subscriptionId: newSubscription.id.toString(),
+        newSubscription
       },
       previousState: previousData,
-      newState: finalNewData
+      newState: finalUpdatedData
     });
 
-    onDataChange(newData);
-  };
-
-  const deleteSelectedRows = () => {
-    const previousData = JSON.parse(JSON.stringify(data)); // Deep copy
-    const deletedRows = Array.from(selectedRows).map(index => data[index]).filter(Boolean);
-    const newData = data.filter((_, index) => !selectedRows.has(index));
-    const finalNewData = JSON.parse(JSON.stringify(newData));
+    onDataChange(updatedData);
     
-    // Log the deletion
-    deletedRows.forEach(row => {
-      auditLogger.logSubscriptionDeletion(
-        row.id.toString(),
-        row.imei,
-        row.vehicleNo,
-        row.customer,
-        {
-          deletedFrom: 'basic_subscription_table',
-          reason: 'bulk_delete'
-        }
-      );
+    // Open edit dialog for the new subscription
+    setEditDialog({ isOpen: true, subscription: newSubscription });
+    setEditValues(newSubscription);
+    
+    toast({
+      title: "New Subscription Added",
+      description: "Please fill in the subscription details",
     });
-
-    // Add undo action
-    addAction({
-      type: 'subscription.delete',
-      description: `Deleted ${deletedRows.length} subscription${deletedRows.length > 1 ? 's' : ''}`,
-      undo: () => {
-        console.log('Undoing bulk deletion, restoring:', previousData.length, 'records');
-        onDataChange(previousData);
-      },
-      redo: () => {
-        console.log('Redoing bulk deletion, applying:', finalNewData.length, 'records');
-        onDataChange(finalNewData);
-      },
-      data: {
-        deletedCount: deletedRows.length,
-        deletedRows: deletedRows.map(row => ({ id: row.id, customer: row.customer, vehicleNo: row.vehicleNo }))
-      },
-      previousState: previousData,
-      newState: finalNewData
-    });
-
-    onDataChange(newData);
-    setSelectedRows(new Set());
-  };
-
-  const toggleRowSelection = (index: number) => {
-    const newSelected = new Set(selectedRows);
-    if (newSelected.has(index)) {
-      newSelected.delete(index);
-    } else {
-      newSelected.add(index);
-    }
-    setSelectedRows(newSelected);
   };
 
   return (
-    <div className="w-full space-y-4">
-      <div className="flex gap-3">
-        <Button onClick={addNewRow} size="sm">
-          <Plus className="w-4 h-4 mr-2" />
-          Add Row
-        </Button>
-        {selectedRows.size > 0 && (
-          <Button onClick={deleteSelectedRows} variant="destructive" size="sm">
-            <Trash2 className="w-4 h-4 mr-2" />
-            Delete Selected ({selectedRows.size})
+    <div className="space-y-4">
+      {/* Header with search and actions */}
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Input
+            placeholder="Search subscriptions..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+
+        <div className="flex gap-2">
+          <Button variant="default" size="sm" onClick={handleAddNew}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add New
           </Button>
-        )}
+          <Button variant="outline" size="sm">
+            <Filter className="h-4 w-4 mr-2" />
+            Filter
+          </Button>
+          <Button variant="outline" size="sm">
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+        </div>
       </div>
 
-      <div className="rounded-md border">
+      {/* Excel-like Table */}
+      <div className="border rounded-lg overflow-hidden bg-white">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="w-12 p-3 border-r">
-                  <Checkbox
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        setSelectedRows(new Set(data.map((_, i) => i)));
-                      } else {
-                        setSelectedRows(new Set());
-                      }
-                    }}
-                    checked={selectedRows.size === data.length && data.length > 0}
-                  />
-                </th>
-                {columns.map((col) => (
-                  <th
-                    key={col.key}
-                    className="p-3 text-left text-sm font-medium text-muted-foreground border-r"
-                    style={{ minWidth: col.width }}
-                  >
-                    {col.label}
-                  </th>
-                ))}
-                <th className="p-3 text-left text-sm font-medium text-muted-foreground">
-                  ACTIONS
-                </th>
+              <tr className="bg-gray-50 border-b">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Sl No</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Date</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">IMEI</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Device</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Vendor</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Vehicle No</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Customer</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Phone No</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Tag Place</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Panic Buttons</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Recharge</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Install Date</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Status</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody>
-              {data.map((row, rowIndex) => (
-                <tr
-                  key={row.id}
-                  className={cn(
-                    "border-b hover:bg-muted/50 transition-colors",
-                    selectedRows.has(rowIndex) && "bg-muted"
-                  )}
-                >
-                  <td className="p-3 border-r">
-                    <Checkbox
-                      checked={selectedRows.has(rowIndex)}
-                      onCheckedChange={() => toggleRowSelection(rowIndex)}
-                    />
-                  </td>
-                  {columns.map((col) => (
-                    <td
-                      key={col.key}
-                      className="p-2 border-r cursor-pointer hover:bg-muted/50 transition-colors"
-                      onClick={() => handleCellClick(rowIndex, col.key, row[col.key as keyof Subscription])}
-                    >
-                      {editingCell?.row === rowIndex && editingCell?.col === col.key ? (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            ref={inputRef}
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            className="h-8 text-sm"
-                          />
-                          <Button size="sm" variant="ghost" onClick={handleSaveEdit}>
-                            <Save className="w-3 h-3" />
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={handleCancelEdit}>
-                            <X className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="p-2 min-h-[36px] flex items-center text-sm">
-                          {String(row[col.key as keyof Subscription] || '')}
-                        </div>
-                      )}
-                    </td>
-                  ))}
-                  <td className="p-3">
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleCellClick(rowIndex, 'customer', row.customer)}
-                      >
-                        <Edit className="w-3 h-3" />
-                      </Button>
-                    </div>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {paginatedData.length === 0 ? (
+                <tr>
+                  <td colSpan={14} className="px-4 py-8 text-center text-gray-500">
+                    {searchTerm ? 'No subscriptions found matching your search.' : 'No active subscriptions yet. Click "Add New" to create one.'}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                paginatedData.map((subscription) => (
+                  <tr key={subscription.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.slNo}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.date}</td>
+                    <td className="px-4 py-3 text-sm font-mono text-gray-900 border-r">{subscription.imei}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.device}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.vendor}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 border-r font-medium">{subscription.vehicleNo}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.customer}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.phoneNo}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.tagPlace}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 border-r text-center">{subscription.panicButtons}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.recharge} Year{subscription.recharge > 1 ? 's' : ''}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 border-r">{formatDate(subscription.installationDate)}</td>
+                    <td className="px-4 py-3 border-r">
+                      <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                        {subscription.status}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleEditClick(subscription)}
+                          className="h-8 w-8 p-0 hover:bg-blue-50"
+                        >
+                          <Edit className="h-4 w-4 text-blue-600" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeleteClick(subscription)}
+                          className="h-8 w-8 p-0 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="space-y-2">
+          <div className="text-sm text-muted-foreground text-center">
+            Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredData.length)} of {filteredData.length} entries
+          </div>
+          <PaginationWithJump
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            showPageInfo={false}
+          />
+        </div>
+      )}
+
+      {/* Edit Subscriber Dialog */}
+      <Dialog open={editDialog.isOpen} onOpenChange={(open) => !open && setEditDialog({ isOpen: false, subscription: null })}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-xl font-semibold">Edit Subscriber</DialogTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setEditDialog({ isOpen: false, subscription: null })}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <DialogDescription>
+              Update subscriber information below
+            </DialogDescription>
+          </DialogHeader>
+          
+          {editDialog.subscription && (
+            <div className="space-y-6 py-4">
+              {/* Two column grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Vehicle Reg No */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Vehicle Reg No</label>
+                  <Input
+                    value={editValues.vehicleNo || ''}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, vehicleNo: e.target.value }))}
+                    className="bg-gray-50"
+                  />
+                </div>
+
+                {/* Customer Name */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Customer Name</label>
+                  <Input
+                    value={editValues.customer || ''}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, customer: e.target.value }))}
+                    className="bg-gray-50"
+                  />
+                </div>
+
+                {/* Mobile Number */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Mobile Number</label>
+                  <Input
+                    value={editValues.phoneNo || ''}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, phoneNo: e.target.value }))}
+                    className="bg-gray-50"
+                  />
+                </div>
+
+                {/* District */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">District</label>
+                  <Select
+                    value={editValues.tagPlace || ''}
+                    onValueChange={(value) => setEditValues(prev => ({ ...prev, tagPlace: value }))}
+                  >
+                    <SelectTrigger className="bg-gray-50">
+                      <SelectValue placeholder="Select district" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Udupi">Udupi</SelectItem>
+                      <SelectItem value="Mysore">Mysore</SelectItem>
+                      <SelectItem value="Hassan">Hassan</SelectItem>
+                      <SelectItem value="Hunsur">Hunsur</SelectItem>
+                      <SelectItem value="Bangalore">Bangalore</SelectItem>
+                      <SelectItem value="Mangalore">Mangalore</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Device Type */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Device Type</label>
+                  <Select
+                    value={editValues.device || ''}
+                    onValueChange={(value) => setEditValues(prev => ({ ...prev, device: value }))}
+                  >
+                    <SelectTrigger className="bg-gray-50">
+                      <SelectValue placeholder="Select device" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ROADPOINT">ROADPOINT</SelectItem>
+                      <SelectItem value="TRANSIGHT">TRANSIGHT</SelectItem>
+                      <SelectItem value="TRACKPOINT">TRACKPOINT</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* IMEI */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">IMEI</label>
+                  <Input
+                    value={editValues.imei || ''}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, imei: e.target.value }))}
+                    className="bg-gray-50 font-mono"
+                  />
+                </div>
+
+                {/* Dealer */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Dealer</label>
+                  <Select
+                    value={editValues.vendor || ''}
+                    onValueChange={(value) => setEditValues(prev => ({ ...prev, vendor: value }))}
+                  >
+                    <SelectTrigger className="bg-gray-50">
+                      <SelectValue placeholder="Select dealer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NITESH">NITESH</SelectItem>
+                      <SelectItem value="Venu Shetty">Venu Shetty</SelectItem>
+                      <SelectItem value="Rajesh">Rajesh</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Status */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Status</label>
+                  <Select
+                    value={editValues.status || 'active'}
+                    onValueChange={(value) => setEditValues(prev => ({ ...prev, status: value as 'active' | 'inactive' | 'expired' }))}
+                  >
+                    <SelectTrigger className="bg-gray-50">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="expired">Expired</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Installation Date */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Installation Date</label>
+                  <Input
+                    type="date"
+                    value={editValues.installationDate ? new Date(editValues.installationDate).toISOString().split('T')[0] : ''}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, installationDate: e.target.value }))}
+                    className="bg-gray-50"
+                  />
+                </div>
+
+                {/* Recharge Period */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Recharge Period (Years)</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="5"
+                    value={editValues.recharge || 1}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, recharge: parseInt(e.target.value) || 1 }))}
+                    className="bg-gray-50"
+                  />
+                </div>
+
+                {/* Panic Buttons */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Panic Buttons</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="10"
+                    value={editValues.panicButtons || 1}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, panicButtons: parseInt(e.target.value) || 1 }))}
+                    className="bg-gray-50"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => setEditDialog({ isOpen: false, subscription: null })}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveEdit}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialog.isOpen} onOpenChange={(open) => !open && setDeleteDialog({ isOpen: false, subscription: null })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              Confirm Deletion
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this subscription? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {deleteDialog.subscription && (
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-medium mb-2">Subscription Details:</h4>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div><strong>IMEI:</strong> {deleteDialog.subscription.imei}</div>
+                  <div><strong>Vehicle:</strong> {deleteDialog.subscription.vehicleNo}</div>
+                  <div><strong>Customer:</strong> {deleteDialog.subscription.customer}</div>
+                  <div><strong>Vendor:</strong> {deleteDialog.subscription.vendor}</div>
+                </div>
+              </div>
+              
+              <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
+                <div className="flex items-center gap-2 text-red-800 mb-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span className="font-medium">Warning</span>
+                </div>
+                <p className="text-sm text-red-700">
+                  This will permanently delete the subscription. The action will be logged for audit purposes.
+                </p>
+              </div>
+              
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setDeleteDialog({ isOpen: false, subscription: null })}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleDeleteConfirm}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Permanently
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

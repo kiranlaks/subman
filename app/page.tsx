@@ -388,7 +388,6 @@ export default function Home() {
                 data={subscriptions}
                 onDataChange={setSubscriptions}
                 onRenewSubscription={handleRenewSubscription}
-                onBulkRenewSubscriptions={handleBulkRenewSubscriptions}
               />
             </CardContent>
           </Card>
