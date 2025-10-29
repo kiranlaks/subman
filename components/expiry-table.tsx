@@ -44,33 +44,82 @@ export function ExpiryTable({ data, onDataChange, onRenewSubscription }: ExpiryT
 
   // Calculate expiry data
   const expiryData = useMemo(() => {
+    if (!data || !Array.isArray(data)) {
+      console.warn('Invalid data provided to ExpiryTable');
+      return [];
+    }
+    
     return data.map(subscription => {
-      const baseDate = subscription.renewalDate 
-        ? new Date(subscription.renewalDate) 
-        : new Date(subscription.installationDate);
-      
-      const rechargeYears = subscription.recharge || 1;
-      const expiryDate = new Date(baseDate);
-      expiryDate.setFullYear(baseDate.getFullYear() + rechargeYears);
-      
-      const today = new Date();
-      const daysUntilExpiry = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-      
-      let expiryStatus: 'expired' | 'expiring-soon' | 'active';
-      if (daysUntilExpiry < 0) {
-        expiryStatus = 'expired';
-      } else if (daysUntilExpiry <= 30) {
-        expiryStatus = 'expiring-soon';
-      } else {
-        expiryStatus = 'active';
-      }
+      try {
+        // Parse the base date - handle different date formats
+        let baseDate: Date;
+        if (subscription.renewalDate) {
+          baseDate = new Date(subscription.renewalDate);
+        } else if (subscription.installationDate) {
+          // Try to parse the installation date
+          const dateStr = subscription.installationDate;
+          // Handle DD-MM-YYYY format (e.g., "13-11-2024")
+          if (typeof dateStr === 'string' && dateStr.includes('-')) {
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+              // Check if it's DD-MM-YYYY or YYYY-MM-DD
+              if (parts[0].length === 4) {
+                // YYYY-MM-DD
+                baseDate = new Date(dateStr);
+              } else {
+                // DD-MM-YYYY
+                const [day, month, year] = parts;
+                baseDate = new Date(`${year}-${month}-${day}`);
+              }
+            } else {
+              baseDate = new Date(dateStr);
+            }
+          } else {
+            baseDate = new Date(dateStr);
+          }
+        } else {
+          // Fallback to today if no date available
+          baseDate = new Date();
+        }
 
-      return {
-        ...subscription,
-        expiryDate: expiryDate.toISOString(),
-        daysUntilExpiry,
-        expiryStatus
-      } as ExpirySubscription;
+        // Validate the date
+        if (isNaN(baseDate.getTime())) {
+          console.warn('Invalid date for subscription:', subscription.id, subscription.installationDate);
+          baseDate = new Date(); // Fallback to today
+        }
+        
+        const rechargeYears = subscription.recharge || 1;
+        const expiryDate = new Date(baseDate);
+        expiryDate.setFullYear(baseDate.getFullYear() + rechargeYears);
+        
+        const today = new Date();
+        const daysUntilExpiry = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        
+        let expiryStatus: 'expired' | 'expiring-soon' | 'active';
+        if (daysUntilExpiry < 0) {
+          expiryStatus = 'expired';
+        } else if (daysUntilExpiry <= 30) {
+          expiryStatus = 'expiring-soon';
+        } else {
+          expiryStatus = 'active';
+        }
+
+        return {
+          ...subscription,
+          expiryDate: expiryDate.toISOString(),
+          daysUntilExpiry,
+          expiryStatus
+        } as ExpirySubscription;
+      } catch (error) {
+        console.error('Error calculating expiry for subscription:', subscription.id, error);
+        // Return subscription with default values on error
+        return {
+          ...subscription,
+          expiryDate: new Date().toISOString(),
+          daysUntilExpiry: 0,
+          expiryStatus: 'active' as const
+        } as ExpirySubscription;
+      }
     });
   }, [data]);
 
