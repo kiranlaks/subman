@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { DashboardStatsCards } from '@/components/dashboard-stats';
 import { ModernAnalytics } from '@/components/modern-analytics';
 
@@ -20,11 +21,36 @@ import { Subscription, DashboardStats } from '@/types/subscription';
 import { auditLogger } from '@/lib/audit-logger';
 import { UndoRedoToolbar } from '@/components/ui/undo-redo-toolbar';
 import { useUndoRedo, useUndoRedoKeyboard } from '@/hooks/use-undo-redo';
+import { DEFAULT_DASHBOARD_VIEW, DashboardView, isDashboardView } from '@/types/dashboard-view';
 
 export default function Home() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>(sampleSubscriptions);
-  const [activeView, setActiveView] = useState('overview');
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const searchParamsString = searchParams.toString();
+  const viewParam = searchParams.get('view');
+  const activeView: DashboardView = isDashboardView(viewParam)
+    ? viewParam
+    : DEFAULT_DASHBOARD_VIEW;
   const { addAction } = useUndoRedo();
+  
+  const handleViewChange = useCallback(
+    (nextView: DashboardView) => {
+      if (nextView === activeView) {
+        return;
+      }
+      const params = new URLSearchParams(searchParamsString);
+      if (nextView === DEFAULT_DASHBOARD_VIEW) {
+        params.delete('view');
+      } else {
+        params.set('view', nextView);
+      }
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [activeView, pathname, router, searchParamsString]
+  );
   
   // Enable keyboard shortcuts
   useUndoRedoKeyboard();
@@ -425,10 +451,10 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background flex">
-      <Sidebar activeView={activeView} onViewChange={setActiveView} />
+      <Sidebar activeView={activeView} onViewChange={handleViewChange} />
       
       <main className="flex-1 overflow-auto">
-        <div className="mx-auto py-8 px-[14px] md:px-[18px] max-w-7xl space-y-8">
+        <div className="mx-auto py-8 px-[14px] md:px-[18px] max-w-screen-2xl space-y-8">
           <div className="flex items-start justify-between">
             <div className="space-y-2">
               <h1 className="text-3xl font-bold tracking-tight">

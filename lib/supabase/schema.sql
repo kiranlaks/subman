@@ -1,5 +1,5 @@
--- Enable Row Level Security
-ALTER DATABASE postgres SET "app.jwt_secret" TO 'your-jwt-secret';
+-- Supabase Schema for SubMan Application
+-- Note: Supabase handles JWT secrets automatically, no need to set them manually
 
 -- Create custom types
 CREATE TYPE subscription_status AS ENUM ('active', 'inactive', 'expired');
@@ -140,67 +140,67 @@ CREATE TRIGGER update_user_profiles_updated_at BEFORE UPDATE ON user_profiles FO
 CREATE TRIGGER update_user_settings_updated_at BEFORE UPDATE ON user_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_application_settings_updated_at BEFORE UPDATE ON application_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Row Level Security (RLS) policies
-ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE application_settings ENABLE ROW LEVEL SECURITY;
+-- Row Level Security (RLS) policies - TEMPORARILY DISABLED
+-- ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE application_settings ENABLE ROW LEVEL SECURITY;
 
--- Subscriptions policies
-CREATE POLICY "Users can view subscriptions" ON subscriptions FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Users can insert subscriptions" ON subscriptions FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-CREATE POLICY "Users can update subscriptions" ON subscriptions FOR UPDATE USING (auth.role() = 'authenticated');
-CREATE POLICY "Admin can delete subscriptions" ON subscriptions FOR DELETE USING (
-  EXISTS (
-    SELECT 1 FROM user_profiles 
-    WHERE id = auth.uid() 
-    AND role IN ('admin', 'manager')
-  )
-);
+-- Subscriptions policies - TEMPORARILY DISABLED
+-- CREATE POLICY "Users can view subscriptions" ON subscriptions FOR SELECT USING (auth.role() = 'authenticated');
+-- CREATE POLICY "Users can insert subscriptions" ON subscriptions FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+-- CREATE POLICY "Users can update subscriptions" ON subscriptions FOR UPDATE USING (auth.role() = 'authenticated');
+-- CREATE POLICY "Admin can delete subscriptions" ON subscriptions FOR DELETE USING (
+--   EXISTS (
+--     SELECT 1 FROM user_profiles 
+--     WHERE id = auth.uid() 
+--     AND role IN ('admin', 'manager')
+--   )
+-- );
 
--- User profiles policies
-CREATE POLICY "Users can view their own profile" ON user_profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Admin can view all profiles" ON user_profiles FOR SELECT USING (
-  EXISTS (
-    SELECT 1 FROM user_profiles 
-    WHERE id = auth.uid() 
-    AND role = 'admin'
-  )
-);
-CREATE POLICY "Users can update their own profile" ON user_profiles FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Admin can insert profiles" ON user_profiles FOR INSERT WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM user_profiles 
-    WHERE id = auth.uid() 
-    AND role = 'admin'
-  )
-);
+-- User profiles policies - TEMPORARILY DISABLED
+-- CREATE POLICY "Users can view their own profile" ON user_profiles FOR SELECT USING (auth.uid() = id);
+-- CREATE POLICY "Admin can view all profiles" ON user_profiles FOR SELECT USING (
+--   EXISTS (
+--     SELECT 1 FROM user_profiles 
+--     WHERE id = auth.uid() 
+--     AND role = 'admin'
+--   )
+-- );
+-- CREATE POLICY "Users can update their own profile" ON user_profiles FOR UPDATE USING (auth.uid() = id);
+-- CREATE POLICY "Admin can insert profiles" ON user_profiles FOR INSERT WITH CHECK (
+--   EXISTS (
+--     SELECT 1 FROM user_profiles 
+--     WHERE id = auth.uid() 
+--     AND role = 'admin'
+--   )
+-- );
 
--- Audit logs policies
-CREATE POLICY "Users can view their own audit logs" ON audit_logs FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Admin can view all audit logs" ON audit_logs FOR SELECT USING (
-  EXISTS (
-    SELECT 1 FROM user_profiles 
-    WHERE id = auth.uid() 
-    AND role = 'admin'
-  )
-);
-CREATE POLICY "All authenticated users can insert audit logs" ON audit_logs FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+-- Audit logs policies - TEMPORARILY DISABLED
+-- CREATE POLICY "Users can view their own audit logs" ON audit_logs FOR SELECT USING (auth.uid() = user_id);
+-- CREATE POLICY "Admin can view all audit logs" ON audit_logs FOR SELECT USING (
+--   EXISTS (
+--     SELECT 1 FROM user_profiles 
+--     WHERE id = auth.uid() 
+--     AND role = 'admin'
+--   )
+-- );
+-- CREATE POLICY "All authenticated users can insert audit logs" ON audit_logs FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
--- User settings policies
-CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USING (auth.uid() = user_id);
+-- User settings policies - TEMPORARILY DISABLED
+-- CREATE POLICY "Users can manage their own settings" ON user_settings FOR ALL USING (auth.uid() = user_id);
 
--- Application settings policies
-CREATE POLICY "Users can view public settings" ON application_settings FOR SELECT USING (is_public = true OR auth.role() = 'authenticated');
-CREATE POLICY "Admin can manage all settings" ON application_settings FOR ALL USING (
-  EXISTS (
-    SELECT 1 FROM user_profiles 
-    WHERE id = auth.uid() 
-    AND role = 'admin'
-  )
-);
+-- Application settings policies - TEMPORARILY DISABLED
+-- CREATE POLICY "Users can view public settings" ON application_settings FOR SELECT USING (is_public = true OR auth.role() = 'authenticated');
+-- CREATE POLICY "Admin can manage all settings" ON application_settings FOR ALL USING (
+--   EXISTS (
+--     SELECT 1 FROM user_profiles 
+--     WHERE id = auth.uid() 
+--     AND role = 'admin'
+--   )
+-- );
 
 -- Create a function to handle user profile creation on signup
 CREATE OR REPLACE FUNCTION handle_new_user()

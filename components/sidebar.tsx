@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { DashboardView } from '@/types/dashboard-view';
 
 import {
   LayoutDashboard,
@@ -19,15 +20,16 @@ import {
   Search,
   Menu,
   X,
-  AlertTriangle
+  AlertTriangle,
+  LucideIcon,
 } from 'lucide-react';
 
 interface SidebarProps {
-  activeView: string;
-  onViewChange: (view: string) => void;
+  activeView: DashboardView;
+  onViewChange: (view: DashboardView) => void;
 }
 
-const mainNavItems = [
+const mainNavItems: Array<{ id: DashboardView; label: string; icon: LucideIcon }> = [
   {
     id: 'overview',
     label: 'Dashboard',

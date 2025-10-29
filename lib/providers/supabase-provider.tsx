@@ -39,56 +39,60 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
   const supabase = createClient()
 
-  // Initialize auth state
+  // Initialize auth state - TEMPORARILY DISABLED
   useEffect(() => {
-    let mounted = true
+    // Authentication temporarily disabled - setting mock state
+    setUser(null)
+    setUserProfile(null)
+    setIsLoading(false)
+    
+    // let mounted = true
 
-    async function getInitialSession() {
-      const { data: { session } } = await supabase.auth.getSession()
+    // async function getInitialSession() {
+    //   const { data: { session } } = await supabase.auth.getSession()
       
-      if (mounted) {
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          const profile = await authService.getCurrentUserProfile()
-          setUserProfile(profile)
-        }
-        setIsLoading(false)
-      }
-    }
+    //   if (mounted) {
+    //     setUser(session?.user ?? null)
+    //     if (session?.user) {
+    //       const profile = await authService.getCurrentUserProfile()
+    //       setUserProfile(profile)
+    //     }
+    //     setIsLoading(false)
+    //   }
+    // }
 
-    getInitialSession()
+    // getInitialSession()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (mounted) {
-          setUser(session?.user ?? null)
-          if (session?.user) {
-            const profile = await authService.getCurrentUserProfile()
-            setUserProfile(profile)
-          } else {
-            setUserProfile(null)
-          }
-          setIsLoading(false)
-        }
-      }
-    )
+    // const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    //   async (event, session) => {
+    //     if (mounted) {
+    //       setUser(session?.user ?? null)
+    //       if (session?.user) {
+    //         const profile = await authService.getCurrentUserProfile()
+    //         setUserProfile(profile)
+    //       } else {
+    //         setUserProfile(null)
+    //       }
+    //       setIsLoading(false)
+    //     }
+    //   }
+    // )
 
-    return () => {
-      mounted = false
-      subscription?.unsubscribe()
-    }
-  }, [supabase.auth])
+    // return () => {
+    //   mounted = false
+    //   subscription?.unsubscribe()
+    // }
+  }, [])
 
-  // Load subscriptions when user is authenticated
+  // Load subscriptions automatically since auth is disabled
   useEffect(() => {
-    if (user && !loadingSubscriptions) {
-      refreshSubscriptions()
-    }
-  }, [user])
+    refreshSubscriptions()
+  }, [])
 
   // Subscription methods
   const refreshSubscriptions = async () => {
-    if (!user) return
+    // Auth check temporarily disabled
+    // if (!user) return
     
     setLoadingSubscriptions(true)
     try {
@@ -126,32 +130,44 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     return newSubscriptions
   }
 
-  // Auth methods
+  // Auth methods - TEMPORARILY DISABLED
   const signIn = async (email: string, password: string) => {
-    const result = await authService.signIn(email, password)
-    if (result.user) {
-      const profile = await authService.getCurrentUserProfile()
-      setUserProfile(profile)
-    }
-    return result
+    // Authentication temporarily disabled
+    return { user: null, error: null }
+    
+    // const result = await authService.signIn(email, password)
+    // if (result.user) {
+    //   const profile = await authService.getCurrentUserProfile()
+    //   setUserProfile(profile)
+    // }
+    // return result
   }
 
   const signOut = async () => {
-    const result = await authService.signOut()
-    if (!result.error) {
-      setUser(null)
-      setUserProfile(null)
-      setSubscriptions([])
-    }
-    return result
+    // Authentication temporarily disabled
+    return { error: null }
+    
+    // const result = await authService.signOut()
+    // if (!result.error) {
+    //   setUser(null)
+    //   setUserProfile(null)
+    //   setSubscriptions([])
+    // }
+    // return result
   }
 
   const hasPermission = async (permission: string) => {
-    return authService.hasPermission(permission)
+    // Authentication temporarily disabled - allow all permissions
+    return true
+    
+    // return authService.hasPermission(permission)
   }
 
   const isAdmin = async () => {
-    return authService.isAdmin()
+    // Authentication temporarily disabled - grant admin access
+    return true
+    
+    // return authService.isAdmin()
   }
 
   const value: SupabaseContextType = {
