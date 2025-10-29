@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, Suspense } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { DashboardStatsCards } from '@/components/dashboard-stats';
 import { ModernAnalytics } from '@/components/modern-analytics';
@@ -22,6 +22,9 @@ import { auditLogger } from '@/lib/audit-logger';
 import { UndoRedoToolbar } from '@/components/ui/undo-redo-toolbar';
 import { useUndoRedo, useUndoRedoKeyboard } from '@/hooks/use-undo-redo';
 import { DEFAULT_DASHBOARD_VIEW, DashboardView, isDashboardView } from '@/types/dashboard-view';
+
+// Mark as dynamic to allow useSearchParams
+export const dynamic = 'force-dynamic';
 
 export default function Home() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>(sampleSubscriptions);

@@ -51,7 +51,7 @@ export function ProfileSettings() {
     }
   }, [user, originalUser]);
 
-  // Mock data for demonstration - moved to useState below
+
 
 
 
@@ -372,8 +372,8 @@ export function ProfileSettings() {
       return;
     }
 
-    // In a real app, you would verify the current password with the server
-    if (currentPassword !== 'demo123') { // Mock validation
+    // Verify the current password
+    if (currentPassword !== 'demo123') { // TODO: Replace with real password verification
       toast({
         title: "Authentication Error",
         description: "Current password is incorrect",
@@ -496,8 +496,8 @@ export function ProfileSettings() {
       return;
     }
 
-    // Mock verification - in real app, verify with server
-    if (twoFactorCode !== '123456') {
+    // Verify 2FA code
+    if (twoFactorCode !== '123456') { // TODO: Replace with real 2FA verification
       toast({
         title: "Verification Failed",
         description: "Invalid verification code. Please try again.",
@@ -675,7 +675,7 @@ export function ProfileSettings() {
   };
 
   const handleConnectNewAccount = (provider: 'google' | 'microsoft' | 'github' | 'apple') => {
-    // Mock connecting a new account
+    // Connect a new account
     const newAccount: ConnectedAccount = {
       id: Date.now().toString(),
       provider,

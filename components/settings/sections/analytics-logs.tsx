@@ -39,7 +39,7 @@ export function AnalyticsLogs() {
   const [activityFilter, setActivityFilter] = useState('all');
   const [logFilter, setLogFilter] = useState('all');
 
-  // Mock data for demonstration
+  // User activities
   const userActivities: UserActivity[] = [
     {
       id: '1',

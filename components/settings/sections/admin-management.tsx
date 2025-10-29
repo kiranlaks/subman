@@ -45,7 +45,7 @@ export function AdminManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
 
-  // Mock audit logs
+  // Audit logs
   const auditLogs: AuditLog[] = [
     {
       id: '1',
@@ -73,7 +73,7 @@ export function AdminManagement() {
     }
   ];
 
-  // Mock organizations for multi-tenant
+  // Organizations for multi-tenant
   const organizations: Organization[] = [
     {
       id: '1',

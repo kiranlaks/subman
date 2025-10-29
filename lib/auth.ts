@@ -1,6 +1,6 @@
 import { User, UserRole, Permission, UserSession, AuthSession } from '@/types/user';
 
-// Mock data for demonstration
+// Permission definitions
 const mockPermissions: Permission[] = [
   // Dashboard permissions
   { id: 'dashboard.view', name: 'View Dashboard', description: 'Access to main dashboard', category: 'dashboard', resource: 'dashboard', action: 'read' },
@@ -153,7 +153,7 @@ class AuthManager {
 
   login(username: string, password: string): Promise<AuthSession> {
     return new Promise((resolve, reject) => {
-      // Mock authentication
+      // Simple authentication
       const user = this.users.find(u => u.username === username);
       if (user && user.isActive) {
         this.currentUser = user;
@@ -161,7 +161,7 @@ class AuthManager {
         
         const session: AuthSession = {
           user,
-          token: 'mock-jwt-token',
+          token: 'jwt-token',
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
         };
         

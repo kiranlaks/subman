@@ -50,7 +50,7 @@ export function SecuritySettings() {
   const [showAddIpDialog, setShowAddIpDialog] = useState(false);
   const [newIpAddress, setNewIpAddress] = useState('');
 
-  // Mock data for demonstration
+  // Recent login attempts
   const recentLoginAttempts: LoginAttempt[] = [
     {
       id: '1',

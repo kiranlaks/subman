@@ -10,6 +10,9 @@ export const metadata: Metadata = {
   description: 'Manage your subscriptions with ease',
 }
 
+// Mark as dynamic
+export const dynamic = 'force-dynamic';
+
 export default function RootLayout({
   children,
 }: {

@@ -457,4 +457,6 @@ export class AuditService {
 }
 
 export const auditService = new AuditService()
+// Alias for backward compatibility
+export const auditLogger = auditService
 

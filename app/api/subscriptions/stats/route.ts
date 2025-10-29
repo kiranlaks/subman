@@ -1,26 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { subscriptionService } from '@/lib/supabase/subscriptions'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
-    // Authentication temporarily disabled
-    // const { data: { user } } = await supabase.auth.getUser()
-    
-    // if (!user) {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    // }
-
-    const stats = await subscriptionService.getStats()
-    
-    return NextResponse.json(stats)
+    // API temporarily disabled
+    // TODO: Implement when Supabase is configured
+    return NextResponse.json({
+      total: 0,
+      active: 0,
+      expiring: 0,
+      expired: 0
+    })
   } catch (error) {
-    console.error('Error fetching subscription stats:', error)
+    console.error('Error fetching stats:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch statistics' },
+      { error: 'Failed to fetch stats' },
       { status: 500 }
     )
   }
 }
-
