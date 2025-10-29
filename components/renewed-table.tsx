@@ -6,11 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Download, Filter, Edit, Trash2, Save, X, AlertTriangle } from 'lucide-react';
+import { Search, Download, Filter, Edit, Trash2, X, AlertTriangle } from 'lucide-react';
 import { PaginationWithJump } from '@/components/ui/pagination-with-jump';
 import { Subscription } from '@/types/subscription';
 import { auditLogger } from '@/lib/audit-logger';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useUndoRedo } from '@/hooks/use-undo-redo';
 
@@ -24,7 +25,10 @@ export function RenewedTable({ data, onDataChange }: RenewedTableProps) {
   const { addAction } = useUndoRedo();
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [editingRow, setEditingRow] = useState<number | null>(null);
+  const [editDialog, setEditDialog] = useState<{ isOpen: boolean; subscription: Subscription | null }>({
+    isOpen: false,
+    subscription: null
+  });
   const [editValues, setEditValues] = useState<Partial<Subscription>>({});
   const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; subscription: Subscription | null }>({
     isOpen: false,
@@ -48,111 +52,110 @@ export function RenewedTable({ data, onDataChange }: RenewedTableProps) {
   const paginatedData = filteredData.slice(startIndex, startIndex + itemsPerPage);
 
   const exportToExcel = () => {
-    // Implementation for Excel export
     console.log('Exporting renewed subscriptions to Excel...');
   };
 
   const formatDate = (dateString: string) => {
     try {
-      return new Date(dateString).toLocaleDateString();
+      return new Date(dateString).toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
     } catch {
       return dateString;
     }
   };
 
-  const handleEdit = (subscription: Subscription) => {
-    setEditingRow(subscription.id);
+  const handleEditClick = (subscription: Subscription) => {
+    setEditDialog({ isOpen: true, subscription });
     setEditValues({
-      customer: subscription.customer,
       vehicleNo: subscription.vehicleNo,
+      ownerName: subscription.ownerName || subscription.customer,
       phoneNo: subscription.phoneNo,
-      vendor: subscription.vendor,
       tagPlace: subscription.tagPlace,
-      recharge: subscription.recharge,
-      ownerName: subscription.ownerName
+      imei: subscription.imei,
+      device: subscription.device,
+      vendor: subscription.vendor,
+      status: subscription.status,
+      installationDate: subscription.installationDate,
+      renewalDate: subscription.renewalDate
     });
   };
 
-  const handleSaveEdit = (subscription: Subscription) => {
-    const previousData = JSON.parse(JSON.stringify(data)); // Deep copy to avoid reference issues
+  const handleSaveEdit = () => {
+    if (!editDialog.subscription) return;
+
+    const subscription = editDialog.subscription;
+    const previousData = JSON.parse(JSON.stringify(data));
     
-    // Track changes for logging and undo/redo
-    let changes: Record<string, { from: any; to: any }> = {};
+    // Track changes
+    const changes: Record<string, { from: any; to: any }> = {};
     let hasChanges = false;
     
-    const updatedData = data.map(sub => {
-      if (sub.id === subscription.id) {
-        const oldValues = { ...sub };
-        const newValues = { ...sub, ...editValues };
-        
-        // Log the changes
-        Object.keys(editValues).forEach(key => {
-          const oldValue = oldValues[key as keyof Subscription];
-          const newValue = editValues[key as keyof Subscription];
-          if (oldValue !== newValue) {
-            changes[key] = { from: oldValue, to: newValue };
-            hasChanges = true;
-          }
-        });
-
-        return newValues;
+    Object.keys(editValues).forEach(key => {
+      const oldValue = subscription[key as keyof Subscription];
+      const newValue = editValues[key as keyof Subscription];
+      if (oldValue !== newValue) {
+        changes[key] = { from: oldValue, to: newValue };
+        hasChanges = true;
       }
-      return sub;
     });
 
-    // Handle logging and undo/redo after the data transformation
-    if (hasChanges) {
-      auditLogger.logSubscriptionEdit(
-        subscription.id.toString(),
-        subscription.imei,
-        subscription.vehicleNo,
-        subscription.customer,
-        changes
-      );
-
-      // Add undo action with proper state management
-      const finalUpdatedData = JSON.parse(JSON.stringify(updatedData));
-      addAction({
-        type: 'subscription.edit',
-        description: `Edited ${Object.keys(changes).length} field(s) for ${subscription.customer} (${subscription.vehicleNo})`,
-        undo: () => {
-          console.log('Undoing edit, restoring:', previousData.length, 'records');
-          onDataChange(previousData);
-        },
-        redo: () => {
-          console.log('Redoing edit, applying:', finalUpdatedData.length, 'records');
-          onDataChange(finalUpdatedData);
-        },
-        data: {
-          subscriptionId: subscription.id,
-          customer: subscription.customer,
-          vehicleNo: subscription.vehicleNo,
-          changes
-        },
-        previousState: previousData,
-        newState: finalUpdatedData
-      });
-
-      toast({
-        title: "Subscription Updated",
-        description: `Successfully updated ${Object.keys(changes).length} field(s) for ${subscription.customer} (${subscription.vehicleNo})`,
-      });
-    } else {
+    if (!hasChanges) {
       toast({
         title: "No Changes",
         description: "No changes were made to the subscription.",
-        variant: "default"
       });
+      setEditDialog({ isOpen: false, subscription: null });
+      return;
     }
 
-    onDataChange(updatedData);
-    setEditingRow(null);
-    setEditValues({});
-  };
+    const updatedData = data.map(sub => 
+      sub.id === subscription.id 
+        ? { ...sub, ...editValues }
+        : sub
+    );
 
-  const handleCancelEdit = () => {
-    setEditingRow(null);
-    setEditValues({});
+    // Log the changes
+    auditLogger.logSubscriptionEdit(
+      subscription.id.toString(),
+      subscription.imei,
+      subscription.vehicleNo,
+      subscription.customer,
+      changes
+    );
+
+    const finalUpdatedData = JSON.parse(JSON.stringify(updatedData));
+    
+    // Add undo action
+    addAction({
+      type: 'subscription.edit',
+      description: `Edited ${Object.keys(changes).length} field(s) for ${subscription.customer} (${subscription.vehicleNo})`,
+      undo: () => {
+        onDataChange(previousData);
+      },
+      redo: () => {
+        onDataChange(finalUpdatedData);
+      },
+      data: {
+        subscriptionId: subscription.id,
+        customer: subscription.customer,
+        vehicleNo: subscription.vehicleNo,
+        changes
+      },
+      previousState: previousData,
+      newState: finalUpdatedData
+    });
+
+    onDataChange(updatedData);
+    
+    toast({
+      title: "Subscription Updated",
+      description: `Successfully updated ${Object.keys(changes).length} field(s)`,
+    });
+    
+    setEditDialog({ isOpen: false, subscription: null });
   };
 
   const handleDeleteClick = (subscription: Subscription) => {
@@ -163,9 +166,8 @@ export function RenewedTable({ data, onDataChange }: RenewedTableProps) {
     if (!deleteDialog.subscription) return;
 
     const subscriptionToDelete = deleteDialog.subscription;
-    const previousData = JSON.parse(JSON.stringify(data)); // Deep copy to avoid reference issues
+    const previousData = JSON.parse(JSON.stringify(data));
     
-    // Log the deletion
     auditLogger.logSubscriptionDeletion(
       subscriptionToDelete.id.toString(),
       subscriptionToDelete.imei,
@@ -179,20 +181,16 @@ export function RenewedTable({ data, onDataChange }: RenewedTableProps) {
       }
     );
 
-    // Remove from data
     const updatedData = data.filter(sub => sub.id !== subscriptionToDelete.id);
     const finalUpdatedData = JSON.parse(JSON.stringify(updatedData));
     
-    // Add undo action with proper state management
     addAction({
       type: 'subscription.delete',
       description: `Deleted subscription for ${subscriptionToDelete.customer} (${subscriptionToDelete.vehicleNo})`,
       undo: () => {
-        console.log('Undoing deletion, restoring:', previousData.length, 'records');
         onDataChange(previousData);
       },
       redo: () => {
-        console.log('Redoing deletion, applying:', finalUpdatedData.length, 'records');
         onDataChange(finalUpdatedData);
       },
       data: {
@@ -209,14 +207,10 @@ export function RenewedTable({ data, onDataChange }: RenewedTableProps) {
     
     toast({
       title: "Subscription Deleted",
-      description: `Successfully deleted subscription for ${subscriptionToDelete.customer} (${subscriptionToDelete.vehicleNo})`,
+      description: `Successfully deleted subscription for ${subscriptionToDelete.customer}`,
       variant: "destructive"
     });
     
-    setDeleteDialog({ isOpen: false, subscription: null });
-  };
-
-  const handleDeleteCancel = () => {
     setDeleteDialog({ isOpen: false, subscription: null });
   };
 
@@ -292,190 +286,86 @@ export function RenewedTable({ data, onDataChange }: RenewedTableProps) {
         </Card>
       </div>
 
-      {/* Table */}
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Sl No</TableHead>
-              <TableHead>IMEI</TableHead>
-              <TableHead>Vehicle No</TableHead>
-              <TableHead>Owner Name</TableHead>
-              <TableHead>Phone No</TableHead>
-              <TableHead>Vendor</TableHead>
-              <TableHead>Tag Place</TableHead>
-              <TableHead>Recharge Period</TableHead>
-              <TableHead>Original Install Date</TableHead>
-              <TableHead>Renewal Date</TableHead>
-              <TableHead>New Expiry Date</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedData.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
-                  {searchTerm ? 'No renewed subscriptions found matching your search.' : 'No renewed subscriptions yet.'}
-                </TableCell>
-              </TableRow>
-            ) : (
-              paginatedData.map((subscription) => {
-                // Calculate new expiry date based on renewal
-                const renewalDate = new Date(subscription.renewalDate!);
-                const rechargeYears = subscription.recharge || 1;
-                const newExpiryDate = new Date(renewalDate);
-                newExpiryDate.setFullYear(renewalDate.getFullYear() + rechargeYears);
+      {/* Excel-like Table */}
+      <div className="border rounded-lg overflow-hidden bg-white">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Sl No</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">IMEI</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Vehicle No</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Owner Name</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Phone No</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Vendor</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Tag Place</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Recharge</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Install Date</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Renewal Date</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">New Expiry</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r">Status</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {paginatedData.length === 0 ? (
+                <tr>
+                  <td colSpan={13} className="px-4 py-8 text-center text-gray-500">
+                    {searchTerm ? 'No renewed subscriptions found matching your search.' : 'No renewed subscriptions yet.'}
+                  </td>
+                </tr>
+              ) : (
+                paginatedData.map((subscription, index) => {
+                  const renewalDate = new Date(subscription.renewalDate!);
+                  const rechargeYears = subscription.recharge || 1;
+                  const newExpiryDate = new Date(renewalDate);
+                  newExpiryDate.setFullYear(renewalDate.getFullYear() + rechargeYears);
 
-                const isEditing = editingRow === subscription.id;
-
-                return (
-                  <TableRow key={subscription.imei}>
-                    <TableCell>{subscription.slNo}</TableCell>
-                    <TableCell className="font-mono text-sm">{subscription.imei}</TableCell>
-                    
-                    {/* Vehicle No - Editable */}
-                    <TableCell>
-                      {isEditing ? (
-                        <Input
-                          value={editValues.vehicleNo || subscription.vehicleNo}
-                          onChange={(e) => setEditValues(prev => ({ ...prev, vehicleNo: e.target.value }))}
-                          className="h-8 w-full"
-                        />
-                      ) : (
-                        subscription.vehicleNo
-                      )}
-                    </TableCell>
-                    
-                    {/* Owner Name - Editable */}
-                    <TableCell>
-                      {isEditing ? (
-                        <Input
-                          value={editValues.ownerName || subscription.ownerName || ''}
-                          onChange={(e) => setEditValues(prev => ({ ...prev, ownerName: e.target.value }))}
-                          className="h-8 w-full"
-                        />
-                      ) : (
-                        subscription.ownerName
-                      )}
-                    </TableCell>
-                    
-                    {/* Phone No - Editable */}
-                    <TableCell>
-                      {isEditing ? (
-                        <Input
-                          value={editValues.phoneNo || subscription.phoneNo}
-                          onChange={(e) => setEditValues(prev => ({ ...prev, phoneNo: e.target.value }))}
-                          className="h-8 w-full"
-                        />
-                      ) : (
-                        subscription.phoneNo
-                      )}
-                    </TableCell>
-                    
-                    {/* Vendor - Editable */}
-                    <TableCell>
-                      {isEditing ? (
-                        <Input
-                          value={editValues.vendor || subscription.vendor}
-                          onChange={(e) => setEditValues(prev => ({ ...prev, vendor: e.target.value }))}
-                          className="h-8 w-full"
-                        />
-                      ) : (
-                        subscription.vendor
-                      )}
-                    </TableCell>
-                    
-                    {/* Tag Place - Editable */}
-                    <TableCell>
-                      {isEditing ? (
-                        <Input
-                          value={editValues.tagPlace || subscription.tagPlace}
-                          onChange={(e) => setEditValues(prev => ({ ...prev, tagPlace: e.target.value }))}
-                          className="h-8 w-full"
-                        />
-                      ) : (
-                        subscription.tagPlace
-                      )}
-                    </TableCell>
-                    
-                    {/* Recharge Period - Editable */}
-                    <TableCell>
-                      {isEditing ? (
-                        <Input
-                          type="number"
-                          min="1"
-                          max="5"
-                          value={editValues.recharge || subscription.recharge}
-                          onChange={(e) => setEditValues(prev => ({ ...prev, recharge: parseInt(e.target.value) || 1 }))}
-                          className="h-8 w-20"
-                        />
-                      ) : (
-                        `${subscription.recharge} Year${subscription.recharge > 1 ? 's' : ''}`
-                      )}
-                    </TableCell>
-                    
-                    <TableCell>{formatDate(subscription.installationDate)}</TableCell>
-                    <TableCell className="font-medium text-green-600">
-                      {formatDate(subscription.renewalDate!)}
-                    </TableCell>
-                    <TableCell>{formatDate(newExpiryDate.toISOString())}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="bg-green-100 text-green-800">
-                        Renewed
-                      </Badge>
-                    </TableCell>
-                    
-                    {/* Actions */}
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {isEditing ? (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleSaveEdit(subscription)}
-                              className="h-8 w-8 p-0"
-                            >
-                              <Save className="h-4 w-4 text-green-600" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={handleCancelEdit}
-                              className="h-8 w-8 p-0"
-                            >
-                              <X className="h-4 w-4 text-gray-600" />
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleEdit(subscription)}
-                              className="h-8 w-8 p-0"
-                            >
-                              <Edit className="h-4 w-4 text-blue-600" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDeleteClick(subscription)}
-                              className="h-8 w-8 p-0"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-600" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
+                  return (
+                    <tr key={subscription.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.slNo}</td>
+                      <td className="px-4 py-3 text-sm font-mono text-gray-900 border-r">{subscription.imei}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 border-r font-medium">{subscription.vehicleNo}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.ownerName || subscription.customer}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.phoneNo}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.vendor}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.tagPlace}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 border-r">{subscription.recharge} Year{subscription.recharge > 1 ? 's' : ''}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 border-r">{formatDate(subscription.installationDate)}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-green-600 border-r">{formatDate(subscription.renewalDate!)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 border-r">{formatDate(newExpiryDate.toISOString())}</td>
+                      <td className="px-4 py-3 border-r">
+                        <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                          Renewed
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleEditClick(subscription)}
+                            className="h-8 w-8 p-0 hover:bg-blue-50"
+                          >
+                            <Edit className="h-4 w-4 text-blue-600" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteClick(subscription)}
+                            className="h-8 w-8 p-0 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Pagination */}
@@ -493,8 +383,190 @@ export function RenewedTable({ data, onDataChange }: RenewedTableProps) {
         </div>
       )}
 
+      {/* Edit Subscriber Dialog */}
+      <Dialog open={editDialog.isOpen} onOpenChange={(open) => !open && setEditDialog({ isOpen: false, subscription: null })}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-xl font-semibold">Edit Subscriber</DialogTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setEditDialog({ isOpen: false, subscription: null })}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <DialogDescription>
+              Update subscriber information below
+            </DialogDescription>
+          </DialogHeader>
+          
+          {editDialog.subscription && (
+            <div className="space-y-6 py-4">
+              {/* Two column grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Vehicle Reg No */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Vehicle Reg No</label>
+                  <Input
+                    value={editValues.vehicleNo || ''}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, vehicleNo: e.target.value }))}
+                    className="bg-gray-50"
+                  />
+                </div>
+
+                {/* Owner Name */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Owner Name</label>
+                  <Input
+                    value={editValues.ownerName || ''}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, ownerName: e.target.value }))}
+                    className="bg-gray-50"
+                  />
+                </div>
+
+                {/* Mobile Number */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Mobile Number</label>
+                  <Input
+                    value={editValues.phoneNo || ''}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, phoneNo: e.target.value }))}
+                    className="bg-gray-50"
+                  />
+                </div>
+
+                {/* District */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">District</label>
+                  <Select
+                    value={editValues.tagPlace || ''}
+                    onValueChange={(value) => setEditValues(prev => ({ ...prev, tagPlace: value }))}
+                  >
+                    <SelectTrigger className="bg-gray-50">
+                      <SelectValue placeholder="Select district" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Udupi">Udupi</SelectItem>
+                      <SelectItem value="Mysore">Mysore</SelectItem>
+                      <SelectItem value="Hassan">Hassan</SelectItem>
+                      <SelectItem value="Hunsur">Hunsur</SelectItem>
+                      <SelectItem value="Bangalore">Bangalore</SelectItem>
+                      <SelectItem value="Mangalore">Mangalore</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Device Type */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Device Type</label>
+                  <Select
+                    value={editValues.device || ''}
+                    onValueChange={(value) => setEditValues(prev => ({ ...prev, device: value }))}
+                  >
+                    <SelectTrigger className="bg-gray-50">
+                      <SelectValue placeholder="Select device" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ROADPOINT">ROADPOINT</SelectItem>
+                      <SelectItem value="TRANSIGHT">TRANSIGHT</SelectItem>
+                      <SelectItem value="TRACKPOINT">TRACKPOINT</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* IMEI */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">IMEI</label>
+                  <Input
+                    value={editValues.imei || ''}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, imei: e.target.value }))}
+                    className="bg-gray-50 font-mono"
+                  />
+                </div>
+
+                {/* Dealer */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Dealer</label>
+                  <Select
+                    value={editValues.vendor || ''}
+                    onValueChange={(value) => setEditValues(prev => ({ ...prev, vendor: value }))}
+                  >
+                    <SelectTrigger className="bg-gray-50">
+                      <SelectValue placeholder="Select dealer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NITESH">NITESH</SelectItem>
+                      <SelectItem value="Venu Shetty">Venu Shetty</SelectItem>
+                      <SelectItem value="Rajesh">Rajesh</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Status */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Status</label>
+                  <Select
+                    value={editValues.status || 'active'}
+                    onValueChange={(value) => setEditValues(prev => ({ ...prev, status: value as 'active' | 'inactive' | 'expired' }))}
+                  >
+                    <SelectTrigger className="bg-gray-50">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="expired">Expired</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Installation Date */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Installation Date</label>
+                  <Input
+                    type="date"
+                    value={editValues.installationDate ? new Date(editValues.installationDate).toISOString().split('T')[0] : ''}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, installationDate: e.target.value }))}
+                    className="bg-gray-50"
+                  />
+                </div>
+
+                {/* Renewal Date */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Renewal Date</label>
+                  <Input
+                    type="date"
+                    value={editValues.renewalDate ? new Date(editValues.renewalDate).toISOString().split('T')[0] : ''}
+                    onChange={(e) => setEditValues(prev => ({ ...prev, renewalDate: e.target.value }))}
+                    className="bg-gray-50"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => setEditDialog({ isOpen: false, subscription: null })}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveEdit}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialog.isOpen} onOpenChange={(open) => !open && handleDeleteCancel()}>
+      <Dialog open={deleteDialog.isOpen} onOpenChange={(open) => !open && setDeleteDialog({ isOpen: false, subscription: null })}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -502,7 +574,7 @@ export function RenewedTable({ data, onDataChange }: RenewedTableProps) {
               Confirm Deletion
             </DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this renewed subscription? This action cannot be undone and will remove the record from the entire database.
+              Are you sure you want to delete this renewed subscription? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           
@@ -526,13 +598,12 @@ export function RenewedTable({ data, onDataChange }: RenewedTableProps) {
                   <span className="font-medium">Warning</span>
                 </div>
                 <p className="text-sm text-red-700">
-                  This will permanently delete the subscription from all tables and views. 
-                  The action will be logged for audit purposes.
+                  This will permanently delete the subscription. The action will be logged for audit purposes.
                 </p>
               </div>
               
               <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={handleDeleteCancel}>
+                <Button variant="outline" onClick={() => setDeleteDialog({ isOpen: false, subscription: null })}>
                   Cancel
                 </Button>
                 <Button variant="destructive" onClick={handleDeleteConfirm}>
